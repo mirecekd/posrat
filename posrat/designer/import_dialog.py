@@ -4,8 +4,9 @@ Glue layer between the Designer UI and the pluggable bulk-import
 pipeline (:mod:`posrat.importers`). The dialog is opened from the Exam
 Explorer toolbar; it drives the user through three states:
 
-1. **Upload**: pick an import source (ExamTopics RTF today) and upload
-   the file. The bytes are written to a ``tempfile`` and fed straight
+1. **Upload**: pick an import source (Practice-exam RTF / CertExam
+   Designer PDF / Practice-exam HTML) and upload the file. The bytes
+   are written to a ``tempfile`` and fed straight
    into :meth:`ImportSource.parse`; the resulting :class:`ParseResult`
    is stashed in :data:`app.storage.user` under
    :data:`PENDING_IMPORT_STORAGE_KEY` so the preview step does not have
@@ -31,8 +32,10 @@ Why its own module (not inside :mod:`posrat.designer.browser`):
 
 Tests stay smoke-only (import + render coverage via the app smoke
 harness): the interesting logic already lives under
-:mod:`posrat.importers.examtopics` and
-:mod:`posrat.importers.conversion`, both of which have direct unit
+:mod:`posrat.importers.rtf_questions`,
+:mod:`posrat.importers.certexam_pdf`,
+:mod:`posrat.importers.html_questions` and
+:mod:`posrat.importers.conversion`, all of which have direct unit
 test suites.
 """
 
@@ -81,7 +84,7 @@ PENDING_IMPORT_STORAGE_KEY = "pending_import"
 PENDING_IMPORT_SELECTION_KEY = "pending_import_selection"
 
 #: Max bytes accepted by the upload widget. 20 MB comfortably fits the
-#: reference ExamTopics dump (13 MB) with headroom for future larger
+#: reference 13 MB RTF dump with headroom for future larger
 #: exam sets, while still rejecting pathological uploads that would
 #: just choke the parser without contributing useful content.
 MAX_IMPORT_FILE_BYTES = 20_000_000
@@ -217,15 +220,15 @@ def _parse_uploaded_bytes(
 
     A tempfile is used — rather than a :class:`io.BytesIO` — because
     every :class:`ImportSource.parse` implementation takes a
-    :class:`pathlib.Path` and may call ``path.read_bytes()`` (the
-    ExamTopics parser does). Reaching for :class:`tempfile.NamedTemporaryFile`
+    :class:`pathlib.Path` and may call ``path.read_bytes()`` (the RTF
+    parser does). Reaching for :class:`tempfile.NamedTemporaryFile`
     with ``delete=False`` lets us pass a real filesystem path while still
     guaranteeing cleanup in the ``finally`` block.
 
     The original filename's suffix is preserved so sources that branch
     on extension (``file_extensions``) see a realistic path. If the
     user uploads a file with no suffix we fall back to an empty one —
-    the parser may still succeed (ExamTopics matches content, not
+    the parser may still succeed (the RTF parser matches content, not
     extension) or raise, which surfaces as a negative toast.
     """
 

@@ -68,9 +68,20 @@ def _render_live_score(stash: dict) -> None:
     no ``target_score`` (legacy sessions started before the
     700/1000 default landed) — the view must never blow up just
     because the header can't show a score.
+
+    **Exam-mode gating.** Visual CertExam keeps the candidate in the
+    dark about their running score in non-training mode so the
+    exam experience matches a real certification: you find out if
+    you passed only after hitting *Finish*. Training sessions still
+    show the live chip because that's where you want instant
+    feedback.
     """
 
+    if stash.get("mode") != "training":
+        return
+
     exam_path_str = stash.get("exam_path")
+
     session_id = stash.get("session_id")
     if not exam_path_str or not session_id:
         return

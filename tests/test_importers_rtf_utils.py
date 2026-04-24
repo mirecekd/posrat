@@ -19,7 +19,7 @@ def test_simple_text_is_preserved() -> None:
 
 
 def test_par_becomes_newline_and_hex_escape_decodes() -> None:
-    # \'0d is a carriage return — ExamTopics uses it to separate "Q<N>" from
+    # \'0d is a carriage return — the RTF dump uses it to separate "Q<N>" from
     # the question body on the same RTF paragraph.
     text, images = strip_rtf_to_text(
         b"{\\rtf1\\ansi Hello\\par World\\'0d end}"
@@ -99,8 +99,8 @@ def test_control_words_with_numeric_arguments_are_consumed() -> None:
     assert text == "hi"
 
 
-def test_examtopics_like_question_skeleton() -> None:
-    # Mirrors the shape of a real ExamTopics paragraph: a font table,
+def test_rtf_like_question_skeleton() -> None:
+    # Mirrors the shape of a real RTF paragraph: a font table,
     # Q-label with embedded CR, then question body, then an answer letter
     # line. This guards against regressions when the stripper changes.
     rtf = (

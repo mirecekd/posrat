@@ -1,25 +1,25 @@
-# tests/test_importers_examtopics.py
-"""Tests for posrat.importers.examtopics (ExamTopics RTF parser)."""
+# tests/test_importers_rtf_questions.py
+"""Tests for posrat.importers.rtf_questions (Practice-exam RTF parser)."""
 
 from __future__ import annotations
 
 
 def test_module_imports() -> None:
-    import posrat.importers.examtopics  # noqa: F401
+    import posrat.importers.rtf_questions  # noqa: F401
 
 
 def test_parser_registered_in_registry() -> None:
     import posrat.importers  # noqa: F401 — triggers registration side-effect
     from posrat.importers.base import get_import_source
 
-    src = get_import_source("examtopics")
-    assert src.display_name == "ExamTopics RTF"
+    src = get_import_source("rtf_questions")
+    assert src.display_name == "Practice-exam RTF"
 
 
-def test_examtopics_parser_reexported_from_init() -> None:
-    from posrat.importers import ExamTopicsParser
+def test_rtf_parser_reexported_from_init() -> None:
+    from posrat.importers import RtfQuestionsParser
 
-    assert ExamTopicsParser.source_id == "examtopics"
+    assert RtfQuestionsParser.source_id == "rtf_questions"
 
 
 _THREE_Q_TEXT = (
@@ -35,17 +35,17 @@ _THREE_Q_TEXT = (
 
 def test_parser_satisfies_import_source_protocol() -> None:
     from posrat.importers.base import ImportSource
-    from posrat.importers.examtopics import ExamTopicsParser
+    from posrat.importers.rtf_questions import RtfQuestionsParser
 
-    parser = ExamTopicsParser()
+    parser = RtfQuestionsParser()
     assert isinstance(parser, ImportSource)
-    assert parser.source_id == "examtopics"
-    assert parser.display_name == "ExamTopics RTF"
+    assert parser.source_id == "rtf_questions"
+    assert parser.display_name == "Practice-exam RTF"
     assert ".rtf" in parser.file_extensions
 
 
 def test_tokenize_finds_three_blocks() -> None:
-    from posrat.importers.examtopics import _tokenize
+    from posrat.importers.rtf_questions import _tokenize
 
     blocks = _tokenize(_THREE_Q_TEXT)
     assert len(blocks) == 3
@@ -57,7 +57,7 @@ def test_tokenize_finds_three_blocks() -> None:
 
 
 def test_parse_block_single_choice_happy_path() -> None:
-    from posrat.importers.examtopics import _parse_block
+    from posrat.importers.rtf_questions import _parse_block
     from posrat.importers.base import ParsedQuestion
 
     block = "What is X?\n\nA. One\nB. Two\n\nAnswer: A\n\nCommunity vote distribution\nA (93%)\n7%\n"
@@ -78,7 +78,7 @@ def test_parse_block_single_choice_happy_path() -> None:
 
 
 def test_parse_block_multi_choice_choose_two() -> None:
-    from posrat.importers.examtopics import _parse_block
+    from posrat.importers.rtf_questions import _parse_block
     from posrat.importers.base import ParsedQuestion
 
     block = "Which two are correct? (Choose two.)\n\nA. P\nB. Q\nC. R\n\nAnswer: A, C\n\n"
@@ -91,7 +91,7 @@ def test_parse_block_multi_choice_choose_two() -> None:
 
 def test_parse_block_answer_formats() -> None:
     """``"B, D"``, ``"BD"``, and ``"B D"`` must all yield two correct choices."""
-    from posrat.importers.examtopics import _parse_block
+    from posrat.importers.rtf_questions import _parse_block
     from posrat.importers.base import ParsedQuestion
 
     base_block = "Stem? (Choose two.)\n\nA. A\nB. B\nC. C\nD. D\n\nAnswer: {ans}\n\n"
@@ -103,7 +103,7 @@ def test_parse_block_answer_formats() -> None:
 
 
 def test_parse_block_no_choices_returns_parse_error() -> None:
-    from posrat.importers.examtopics import _parse_block
+    from posrat.importers.rtf_questions import _parse_block
     from posrat.importers.base import ParseError
 
     block = "Just some text with no choices.\n\nAnswer: A\n\n"
@@ -113,7 +113,7 @@ def test_parse_block_no_choices_returns_parse_error() -> None:
 
 
 def test_image_placeholder_in_body_populates_images() -> None:
-    from posrat.importers.examtopics import _parse_block
+    from posrat.importers.rtf_questions import _parse_block
     from posrat.importers.base import ParsedQuestion
 
     # Simulate a block where Q body contains ⟨IMG:3⟩ (global id 3)
@@ -131,7 +131,7 @@ def test_community_vote_goes_into_explanation() -> None:
     """The community-vote block is kept as the question's explanation
     so the user sees it in the Designer's Reference field (matches
     Visual CertExam's Explanation/Reference column)."""
-    from posrat.importers.examtopics import _parse_block
+    from posrat.importers.rtf_questions import _parse_block
     from posrat.importers.base import ParsedQuestion
 
     block = (
@@ -148,7 +148,7 @@ def test_community_vote_goes_into_explanation() -> None:
 def test_no_community_vote_leaves_explanation_none() -> None:
     """When the source omits the community-vote block the explanation
     stays ``None`` — we never make up text for the Reference field."""
-    from posrat.importers.examtopics import _parse_block
+    from posrat.importers.rtf_questions import _parse_block
     from posrat.importers.base import ParsedQuestion
 
     block = "What? \n\nA. X\nB. Y\n\nAnswer: B\n\n"
@@ -175,7 +175,7 @@ def test_rtf_integration_single_question() -> None:
     """parse() on a synthetic RTF file returns one ParsedQuestion."""
     import tempfile
     from pathlib import Path
-    from posrat.importers.examtopics import ExamTopicsParser
+    from posrat.importers.rtf_questions import RtfQuestionsParser
 
     rtf = _make_rtf(
         "Q1\rWhat is X?\n\nA. Alpha\nB. Beta\n\nAnswer: A\n\n"
@@ -186,7 +186,7 @@ def test_rtf_integration_single_question() -> None:
         tmp = Path(f.name)
 
     try:
-        result = ExamTopicsParser().parse(tmp)
+        result = RtfQuestionsParser().parse(tmp)
     finally:
         tmp.unlink()
 
@@ -209,7 +209,7 @@ def test_rtf_integration_image_placeholder() -> None:
     import tempfile
     from pathlib import Path
     from posrat.importers.rtf_utils import strip_rtf_to_text
-    from posrat.importers.examtopics import ExamTopicsParser
+    from posrat.importers.rtf_questions import RtfQuestionsParser
 
     # Build RTF with an embedded PNG image between Q1 label and question body.
     img_hex = "89504e47"  # b'\x89PNG'
@@ -236,7 +236,7 @@ def test_rtf_integration_image_placeholder() -> None:
         tmp = Path(f.name)
 
     try:
-        result = ExamTopicsParser().parse(tmp)
+        result = RtfQuestionsParser().parse(tmp)
     finally:
         tmp.unlink()
 
@@ -248,7 +248,7 @@ def test_rtf_integration_image_placeholder() -> None:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end smoke test against the real ExamTopics RTF fixture.
+# End-to-end smoke test against the real RTF fixture.
 # ---------------------------------------------------------------------------
 
 import os
@@ -256,15 +256,15 @@ from pathlib import Path
 
 import pytest
 
-_REAL_RTF_ENV = "POSRAT_EXAMTOPICS_RTF"
-_REAL_RTF_DEFAULT = "/mnt/c/DATA/certy/examtopics.html_formatted.rtf"
+_REAL_RTF_ENV = "POSRAT_RTF_FIXTURE"
+_REAL_RTF_DEFAULT = "/mnt/c/DATA/certy/practice_exam.rtf"
 
 
 def _real_rtf_path() -> Path | None:
-    """Return the on-disk ExamTopics fixture, or ``None`` when unavailable.
+    """Return the on-disk RTF fixture, or ``None`` when unavailable.
 
     The 13 MB real-world dump is not shipped in the repo. Developers can
-    point the test at their local copy via ``POSRAT_EXAMTOPICS_RTF`` or
+    point the test at their local copy via ``POSRAT_RTF_FIXTURE`` or
     keep the canonical WSL path. CI environments without the file are
     skipped instead of failing so the test is portable.
     """
@@ -272,8 +272,8 @@ def _real_rtf_path() -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-@pytest.mark.skipif(_real_rtf_path() is None, reason="real ExamTopics RTF fixture not available")
-def test_real_examtopics_rtf_parses_without_errors() -> None:
+@pytest.mark.skipif(_real_rtf_path() is None, reason="real RTF fixture not available")
+def test_real_rtf_parses_without_errors() -> None:
     """End-to-end smoke test: parse the 181-question reference RTF.
 
     Asserts the same quality bar we require from the bulk importer in
@@ -282,11 +282,11 @@ def test_real_examtopics_rtf_parses_without_errors() -> None:
     ``ParseError`` records for the current fixture, and the Q/A pair
     for the well-known Q1 must come out correct (D is the answer).
     """
-    from posrat.importers.examtopics import ExamTopicsParser
+    from posrat.importers.rtf_questions import RtfQuestionsParser
 
     path = _real_rtf_path()
     assert path is not None  # makes type checker happy; @skipif handled None
-    result = ExamTopicsParser().parse(path)
+    result = RtfQuestionsParser().parse(path)
 
     assert len(result.questions) >= 170, (
         f"expected >=170 parsed, got {len(result.questions)}"

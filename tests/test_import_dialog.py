@@ -54,11 +54,11 @@ def test_format_question_type_passthrough_for_unknown() -> None:
     assert _format_question_type("custom") == "custom"
 
 
-def test_parse_uploaded_bytes_runs_registered_examtopics_parser() -> None:
+def test_parse_uploaded_bytes_runs_registered_rtf_parser() -> None:
     """End-to-end: the helper wraps bytes in a tempfile and hits the
-    registered ExamTopics parser, returning a usable :class:`ParseResult`.
+    registered RTF parser, returning a usable :class:`ParseResult`.
     """
-    import posrat.importers.examtopics  # noqa: F401 — ensure registration
+    import posrat.importers.rtf_questions  # noqa: F401 — ensure registration
 
     rtf = (
         b"{\\rtf1\\ansi Q1\\'0d"
@@ -70,7 +70,7 @@ def test_parse_uploaded_bytes_runs_registered_examtopics_parser() -> None:
         b"Answer: A\\par "
         b"}"
     )
-    result = _parse_uploaded_bytes("examtopics", "mini.rtf", rtf)
+    result = _parse_uploaded_bytes("rtf_questions", "mini.rtf", rtf)
     assert len(result.questions) == 1
     assert len(result.parse_errors) == 0
     correct = [c for c in result.questions[0].choices if c.is_correct]

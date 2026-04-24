@@ -1,5 +1,5 @@
 # posrat/importers/__init__.py
-"""Bulk import of exam questions from external sources (ExamTopics, ...).
+"""Bulk import of exam questions from external sources (RTF / PDF / HTML).
 
 This package provides pluggable parsers that convert external formats into
 intermediate :class:`~posrat.importers.base.ParsedQuestion` objects. The UI /
@@ -26,8 +26,9 @@ from posrat.importers.base import (
     register_import_source,
 )
 from posrat.importers.conversion import ImportReport, convert_parsed_to_question, persist_parsed_questions
-from posrat.importers.examtopics import ExamTopicsParser
+from posrat.importers.rtf_questions import RtfQuestionsParser
 from posrat.importers.certexam_pdf import CertExamPdfParser
+from posrat.importers.html_questions import HtmlQuestionsParser
 
 __all__ = [
     "IMPORT_SOURCES",
@@ -43,6 +44,7 @@ __all__ = [
     "list_import_sources",
     "persist_parsed_questions",
     "register_import_source",
-    "ExamTopicsParser",
+    "RtfQuestionsParser",
     "CertExamPdfParser",
+    "HtmlQuestionsParser",
 ]

@@ -24,6 +24,7 @@ from posrat.storage.question_repo import (
 )
 
 from posrat.storage.session_repo import (
+    delete_session,
     finish_session,
     get_session,
     list_sessions,
@@ -37,6 +38,7 @@ __all__ = [
     "apply_migrations",
     "create_exam",
     "delete_question",
+    "delete_session",
     "finish_session",
     "get_exam",
     "get_session",
@@ -48,4 +50,5 @@ __all__ = [
     "start_session",
     "update_question",
 ]
+
 

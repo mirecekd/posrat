@@ -78,6 +78,61 @@ def sample_question_ids(
     return [q.id for q in sampled]
 
 
+def select_questions_by_range(
+    questions: Iterable[Question],
+    start: int,
+    end: int,
+) -> list[str]:
+    """Return question ids for the inclusive 1-based range ``start..end``.
+
+    The Runner's "Take question range from X to Y" mode (screenshot
+    from the planning session mirrors Visual CertExam) lets the
+    candidate drill into a specific slice of the question bank — e.g.
+    "questions 300-310" when reviewing a recent weak spot.
+
+    ``questions`` must already be in the author-specified order (the
+    :func:`posrat.storage.question_repo.list_questions` DAO sorts by
+    ``order_index`` ascending, which is what the Runner passes in).
+    Indices are 1-based and **inclusive** so the dialog's spinners
+    match the numbering the candidate sees in the question view
+    ("Question 300 of 334"). ``start = end`` is allowed — that picks
+    a single question.
+
+    Raises:
+
+    * :class:`ValueError` — ``start < 1``, ``end < start``, or
+      ``end > len(questions)``. We never silently clamp because the
+      candidate explicitly typed both numbers and a clamp would hide
+      off-by-one mistakes on short exams.
+    * :class:`ValueError` — the pool is empty (no questions at all).
+
+    Unlike :func:`sample_question_ids` this helper keeps the
+    author-specified order: the candidate asked for questions
+    300-310, not a shuffle of them. Choice-level shuffling is
+    independent and still honoured at render time via
+    :func:`shuffle_choices`.
+    """
+
+    pool = list(questions)
+    if not pool:
+        raise ValueError(
+            "cannot select a range from an empty question list"
+        )
+    if start < 1:
+        raise ValueError(f"start must be >= 1, got {start}")
+    if end < start:
+        raise ValueError(
+            f"end ({end}) must be >= start ({start})"
+        )
+    if end > len(pool):
+        raise ValueError(
+            f"end ({end}) exceeds pool size ({len(pool)})"
+        )
+
+    # 1-based inclusive → Python 0-based exclusive slice.
+    return [q.id for q in pool[start - 1 : end]]
+
+
 def shuffle_choices(
     choices: Iterable[Choice],
     *,

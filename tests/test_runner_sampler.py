@@ -16,7 +16,12 @@ import random
 import pytest
 
 from posrat.models import Choice, Question
-from posrat.runner.sampler import sample_question_ids, shuffle_choices
+from posrat.runner.sampler import (
+    sample_question_ids,
+    select_questions_by_range,
+    shuffle_choices,
+)
+
 
 
 def _make_questions(count: int) -> list[Question]:
@@ -139,3 +144,63 @@ def test_shuffle_choices_short_circuits_for_trivial_inputs() -> None:
     single = [Choice(id="c1", text="A", is_correct=True)]
     assert [c.id for c in shuffle_choices(single, allow_shuffle=True)] == ["c1"]
     assert shuffle_choices([], allow_shuffle=True) == []
+
+
+# --------------------------------------------------------------------------- #
+# select_questions_by_range — 1-based inclusive slice for "take range" mode  #
+# --------------------------------------------------------------------------- #
+
+
+def test_select_questions_by_range_returns_inclusive_slice() -> None:
+    """Range 3..5 of 10 questions → q-2, q-3, q-4 (1-based inclusive)."""
+
+    questions = _make_questions(10)
+    ids = select_questions_by_range(questions, start=3, end=5)
+    assert ids == ["q-2", "q-3", "q-4"]
+
+
+def test_select_questions_by_range_single_question() -> None:
+    """start == end is valid and returns exactly one question."""
+
+    questions = _make_questions(10)
+    assert select_questions_by_range(questions, start=7, end=7) == ["q-6"]
+
+
+def test_select_questions_by_range_full_span() -> None:
+    """1..len(pool) selects everything in order."""
+
+    questions = _make_questions(5)
+    ids = select_questions_by_range(questions, start=1, end=5)
+    assert ids == [q.id for q in questions]
+
+
+def test_select_questions_by_range_rejects_start_below_one() -> None:
+    """0-based indices are a programming error (dialog is 1-based)."""
+
+    questions = _make_questions(5)
+    with pytest.raises(ValueError):
+        select_questions_by_range(questions, start=0, end=3)
+
+
+def test_select_questions_by_range_rejects_reversed_range() -> None:
+    """end < start is a user typo we surface, not silently normalise."""
+
+    questions = _make_questions(5)
+    with pytest.raises(ValueError):
+        select_questions_by_range(questions, start=4, end=2)
+
+
+def test_select_questions_by_range_rejects_end_beyond_pool() -> None:
+    """Asking for end=11 on a 5-question pool fails loudly."""
+
+    questions = _make_questions(5)
+    with pytest.raises(ValueError):
+        select_questions_by_range(questions, start=1, end=11)
+
+
+def test_select_questions_by_range_rejects_empty_pool() -> None:
+    """Empty pool can never satisfy a range — surfaces ValueError."""
+
+    with pytest.raises(ValueError):
+        select_questions_by_range([], start=1, end=1)
+

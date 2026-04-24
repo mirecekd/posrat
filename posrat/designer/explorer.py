@@ -222,19 +222,20 @@ def _render_toolbar() -> None:
         # adds many questions at once, so it belongs next to the
         # per-question actions but is visually grouped with them via
         # the shared q-gutter-xs spacing (no extra separator needed).
-        # Two buttons with format-specific Material icons make the
-        # source type obvious at a glance — ``article`` for the
-        # ExamTopics RTF flow and ``picture_as_pdf`` for the CertExam
-        # Designer PDF flow — and each opens the shared bulk-import
-        # dialog pre-locked to the matching parser (so the file picker
-        # auto-filters by extension and no dropdown is needed).
+        # Three buttons with format-specific Material icons make the
+        # source type obvious at a glance — ``article`` for the RTF
+        # flow, ``picture_as_pdf`` for the CertExam Designer PDF flow,
+        # and ``html`` for the saved-HTML-page flow — each opens the
+        # shared bulk-import dialog pre-locked to the matching parser
+        # (so the file picker auto-filters by extension and no dropdown
+        # is needed).
         ui.button(
             icon="article",
             on_click=lambda _evt=None: _show_bulk_import_dialog(
-                preselect_source_id="examtopics"
+                preselect_source_id="rtf_questions"
             ),
         ).props("flat dense size=sm color=primary").tooltip(
-            "Bulk import (RTF — ExamTopics)"
+            "Bulk import (RTF)"
         )
         ui.button(
             icon="picture_as_pdf",
@@ -243,6 +244,14 @@ def _render_toolbar() -> None:
             ),
         ).props("flat dense size=sm color=primary").tooltip(
             "Bulk import (PDF — CertExam Designer)"
+        )
+        ui.button(
+            icon="html",
+            on_click=lambda _evt=None: _show_bulk_import_dialog(
+                preselect_source_id="html_questions"
+            ),
+        ).props("flat dense size=sm color=primary").tooltip(
+            "Bulk import (HTML)"
         )
 
 
@@ -272,7 +281,7 @@ def _render_question_row(
     )
     # Tagging the selected row with a stable DOM id lets us scroll it
     # into view on the next render — without it, selecting a question
-    # deep in a long exam (e.g. Q181 in the ExamTopics import) loses
+    # deep in a long exam (e.g. Q181 in a bulk RTF import) loses
     # the row off-screen and the user can't tell which question the
     # Main Editor is showing. The scroll JS runs once per render in
     # ``render_explorer_panel`` after the list is assembled.

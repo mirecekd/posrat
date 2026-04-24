@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from posrat.models import Choice, Exam, Question
 from posrat.storage import (
     create_exam,
+    delete_session,
     finish_session,
     get_session,
     list_sessions,
@@ -17,6 +18,7 @@ from posrat.storage import (
     record_answer,
     start_session,
 )
+
 
 
 def _build_exam(exam_id: str = "exam-1") -> Exam:
@@ -418,3 +420,107 @@ def test_list_sessions_preserves_snapshot_metadata(tmp_path) -> None:
         assert sessions[1].question_count is None
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12 — delete_session DAO (history panel "delete" button)               #
+# --------------------------------------------------------------------------- #
+
+
+def test_delete_session_removes_row_and_answers(tmp_path) -> None:
+    """Deleting a session cascades into its answers."""
+
+    db = _fresh_db(tmp_path)
+    try:
+        create_exam(db, _build_exam())
+        start_session(
+            db,
+            exam_id="exam-1",
+            mode="training",
+            session_id="s-del",
+            started_at="2026-04-23T10:00:00Z",
+        )
+        record_answer(
+            db,
+            session_id="s-del",
+            question_id="q-1",
+            given_json='{"choice_id":"q-1-c-a"}',
+            is_correct=True,
+            answer_id="a-del",
+        )
+
+        # Precondition: session + answer rows exist.
+        (sess_before,) = db.execute(
+            "SELECT COUNT(*) FROM sessions WHERE id = ?", ("s-del",)
+        ).fetchone()
+        (ans_before,) = db.execute(
+            "SELECT COUNT(*) FROM answers WHERE session_id = ?",
+            ("s-del",),
+        ).fetchone()
+        assert sess_before == 1 and ans_before == 1
+
+        removed = delete_session(db, "s-del")
+        assert removed is True
+
+        # Both the session row and the cascaded answer row are gone.
+        (sess_after,) = db.execute(
+            "SELECT COUNT(*) FROM sessions WHERE id = ?", ("s-del",)
+        ).fetchone()
+        (ans_after,) = db.execute(
+            "SELECT COUNT(*) FROM answers WHERE session_id = ?",
+            ("s-del",),
+        ).fetchone()
+        assert sess_after == 0 and ans_after == 0
+    finally:
+        db.close()
+
+
+def test_delete_session_is_idempotent_noop(tmp_path) -> None:
+    """Calling delete_session on a missing id returns False, does not raise."""
+
+    db = _fresh_db(tmp_path)
+    try:
+        create_exam(db, _build_exam())
+        assert delete_session(db, "does-not-exist") is False
+    finally:
+        db.close()
+
+
+def test_delete_session_preserves_other_sessions(tmp_path) -> None:
+    """Deleting one session must not touch siblings in the same exam."""
+
+    db = _fresh_db(tmp_path)
+    try:
+        create_exam(db, _build_exam())
+        start_session(
+            db,
+            exam_id="exam-1",
+            mode="training",
+            session_id="s-keep",
+            started_at="2026-04-23T09:00:00Z",
+        )
+        start_session(
+            db,
+            exam_id="exam-1",
+            mode="training",
+            session_id="s-drop",
+            started_at="2026-04-23T10:00:00Z",
+        )
+        record_answer(
+            db,
+            session_id="s-keep",
+            question_id="q-1",
+            given_json='{"choice_id":"q-1-c-a"}',
+            is_correct=True,
+            answer_id="a-keep",
+        )
+
+        delete_session(db, "s-drop")
+
+        kept = get_session(db, "s-keep")
+        assert kept is not None
+        assert len(kept.answers) == 1
+        assert get_session(db, "s-drop") is None
+    finally:
+        db.close()
+

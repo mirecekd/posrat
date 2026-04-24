@@ -6,7 +6,7 @@ The unit tests exercise the pure, pypdf-independent helpers
 run instantly and don't require the ~2 MB real PDF to be on disk. A
 skip-able end-to-end smoke test at the bottom hits the real reference
 PDF when it's available on the developer machine — it's the same
-pattern used for the ExamTopics fixture.
+pattern used for the RTF fixture.
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ def test_parse_block_single_choice_happy_path() -> None:
     correct = [c for c in result.choices if c.is_correct]
     assert [c.letter for c in correct] == ["B"]
     # Community-vote block is captured as the explanation (Designer's
-    # Reference field convention, mirrors the ExamTopics parser).
+    # Reference field convention, mirrors the RTF parser).
     assert result.explanation is not None
     assert "Community vote distribution" in result.explanation
     assert "B (93%)" in result.explanation
@@ -217,7 +217,7 @@ def test_parse_block_no_community_vote_leaves_explanation_none() -> None:
 
 def test_parse_block_multiline_choice_text_is_joined() -> None:
     """A choice whose text wraps across multiple PDF lines should end
-    up as a single space-joined string — mirrors the ExamTopics
+    up as a single space-joined string — mirrors the RTF
     parser's behaviour and matches how the PDF extractor splits
     long lines."""
     from posrat.importers.certexam_pdf import _parse_block
@@ -282,7 +282,7 @@ def _real_pdf_path() -> Path | None:
 def test_real_certexam_pdf_parses_without_errors() -> None:
     """End-to-end smoke test: parse the 334-question reference PDF.
 
-    The production-quality bar mirrors the ExamTopics fixture smoke
+    The production-quality bar mirrors the RTF fixture smoke
     test: every Q-block must turn into a :class:`ParsedQuestion`, zero
     :class:`ParseError` records are tolerated for the shipped fixture,
     and the well-known Q1 must be identified as a ``single_choice``

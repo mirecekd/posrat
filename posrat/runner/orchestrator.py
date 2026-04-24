@@ -26,17 +26,67 @@ import random
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
 from posrat.models import Session, SessionMode
 from posrat.runner.grading import grade_answer
-from posrat.runner.sampler import sample_question_ids
+from posrat.runner.sampler import (
+    sample_question_ids,
+    select_questions_by_range,
+)
 from posrat.storage import (
     list_questions,
     open_db,
     record_answer,
     start_session,
 )
+
+
+# --------------------------------------------------------------------------- #
+# Question-selection strategies (Phase 12 — mode dialog Visual CertExam port) #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class SelectAll:
+    """Take N random questions from the whole exam pool.
+
+    ``count = None`` means "take every question" (full shuffle). When
+    ``count`` exceeds the exam pool size the sampler clamps silently —
+    see :func:`posrat.runner.sampler.sample_question_ids`.
+    """
+
+    count: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class SelectRange:
+    """Take the inclusive 1-based slice ``start..end`` of the exam pool.
+
+    Mirrors the VCE "Take question range from X to Y" dialog option
+    shown on the screenshot used when planning this feature. Order is
+    preserved — the sampler does not shuffle a hand-picked range.
+    """
+
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
+class SelectIncorrect:
+    """Take questions the current candidate answered wrong ≥ N times.
+
+    The orchestrator queries the exam DB for finished sessions
+    belonging to ``candidate_name`` (the same user that's about to
+    run this session) and picks every question where the total
+    ``is_correct = 0`` count is at least ``min_wrong_count``.
+    """
+
+    min_wrong_count: int = 1
+
+
+QuestionSelection = Union[SelectAll, SelectRange, SelectIncorrect]
+
 
 
 #: Default raw-point "100 %" mark applied to sessions when neither the
@@ -52,9 +102,92 @@ DEFAULT_PASSING_SCORE = 700
 
 
 
+def list_incorrect_question_ids(
+    db: sqlite3.Connection,
+    *,
+    exam_id: str,
+    candidate_name: str,
+    min_wrong_count: int,
+) -> list[str]:
+    """Return ids of questions the candidate answered wrong ≥ N times.
+
+    Scope:
+
+    * Counts only **finished** sessions (``finished_at IS NOT NULL``)
+      so in-progress attempts don't warp the statistic.
+    * Filters by ``candidate_name`` — the "questions *I* answered
+      incorrectly" semantics from the VCE screenshot.
+    * Dedups per ``(session_id, question_id)`` at the
+      :func:`record_answer` DAO layer already, so a plain ``COUNT(*)``
+      here yields the number of distinct *sessions* that got it wrong.
+
+    Returns ids in ``order_index`` order (same as
+    :func:`posrat.storage.list_questions`) so the downstream sampler
+    keeps a natural browsing order. Empty list when nothing matches —
+    the caller handles the "no questions found" UX.
+    """
+
+    if min_wrong_count < 1:
+        raise ValueError(
+            f"min_wrong_count must be >= 1, got {min_wrong_count}"
+        )
+
+    rows = db.execute(
+        """
+        SELECT a.question_id, COUNT(*) AS wrong_count
+        FROM answers a
+        JOIN sessions s ON s.id = a.session_id
+        JOIN questions q ON q.id = a.question_id
+        WHERE s.exam_id = ?
+          AND s.candidate_name = ?
+          AND s.finished_at IS NOT NULL
+          AND a.is_correct = 0
+        GROUP BY a.question_id
+        HAVING wrong_count >= ?
+        ORDER BY q.order_index ASC, a.question_id ASC
+        """,
+        (exam_id, candidate_name, min_wrong_count),
+    ).fetchall()
+    return [str(row["question_id"]) for row in rows]
+
+
+def _resolve_selection(
+    *,
+    db: sqlite3.Connection,
+    exam_id: str,
+    candidate_name: str,
+    questions,
+    selection: QuestionSelection,
+    rng: Optional[random.Random],
+) -> list[str]:
+    """Dispatch to the concrete sampler based on ``selection`` kind."""
+
+    if isinstance(selection, SelectAll):
+        return sample_question_ids(questions, selection.count, rng=rng)
+    if isinstance(selection, SelectRange):
+        return select_questions_by_range(
+            questions, start=selection.start, end=selection.end
+        )
+    if isinstance(selection, SelectIncorrect):
+        ids = list_incorrect_question_ids(
+            db,
+            exam_id=exam_id,
+            candidate_name=candidate_name,
+            min_wrong_count=selection.min_wrong_count,
+        )
+        # Intersect with the current question pool so a stale id (e.g.
+        # an old answer row whose question has been deleted in the
+        # Designer) doesn't crash the Runner when the question is
+        # fetched later. ``questions`` is already order_index sorted.
+        pool_ids = {q.id for q in questions}
+        return [qid for qid in ids if qid in pool_ids]
+    raise TypeError(f"unknown selection type: {type(selection).__name__}")
+
+
 @dataclass(frozen=True)
 class StartedSession:
     """Output of :func:`start_runner_session`.
+
 
     Bundles the persisted :class:`Session` with the order in which the
     Runner should present questions. The list is stashed verbatim in
@@ -73,6 +206,7 @@ def start_runner_session(
     mode: SessionMode,
     candidate_name: str,
     question_count: Optional[int] = None,
+    selection: Optional[QuestionSelection] = None,
     time_limit_minutes: Optional[int] = None,
     passing_score: Optional[int] = None,
     target_score: Optional[int] = None,
@@ -80,17 +214,22 @@ def start_runner_session(
     started_at: Optional[str] = None,
     rng: Optional[random.Random] = None,
 ) -> StartedSession:
-    """Create a new Runner session and return the sampled question ids.
+    """Create a new Runner session and return the selected question ids.
 
-    Opens the exam DB at ``db_path``, samples ``question_count`` ids
-    via :func:`sample_question_ids` (``None`` = take all) and calls
+    Opens the exam DB at ``db_path``, picks question ids using one of
+    the three :data:`QuestionSelection` strategies, and calls
     :func:`start_session` with every snapshot kwarg.
+
+    ``selection`` is the canonical way to control which questions the
+    session picks up. When omitted we fall back to the legacy
+    ``question_count`` alias (``SelectAll(count=question_count)``) so
+    existing callers keep compiling.
 
     Raises:
 
     * :class:`LookupError` — ``exam_id`` does not exist.
-    * :class:`ValueError` — ``question_count`` is 0 / negative, or
-      the exam has no questions and ``question_count`` is positive.
+    * :class:`ValueError` — selection is empty / malformed, or the
+      exam has no questions at all.
     * :class:`sqlite3.DatabaseError` — underlying I/O failure.
 
     ``session_id`` / ``started_at`` / ``rng`` are dependency-injection
@@ -113,6 +252,12 @@ def start_runner_session(
         # truncates so the pass mark never rounds *up* into a pass.
         passing_score = int(target_score * DEFAULT_PASSING_SCORE / DEFAULT_TARGET_SCORE)
 
+    # ``selection`` wins when both are given; legacy callers pass only
+    # ``question_count`` and we upgrade it to the equivalent SelectAll
+    # so the rest of the function has a single code path.
+    if selection is None:
+        selection = SelectAll(count=question_count)
+
     db = open_db(db_path)
 
     try:
@@ -128,16 +273,23 @@ def start_runner_session(
                 f"exam {exam_id!r} has no questions to run"
             )
 
-
-        sampled_ids = sample_question_ids(
-            questions,
-            question_count,
+        sampled_ids = _resolve_selection(
+            db=db,
+            exam_id=exam_id,
+            candidate_name=candidate_name,
+            questions=questions,
+            selection=selection,
             rng=rng,
         )
+        if not sampled_ids:
+            raise ValueError(
+                "selection produced no questions — cannot start a session"
+            )
         # The actual size persisted in the snapshot is the *effective*
-        # question_count (clamped by the sampler). Users who asked for
-        # "65 from a 50-question exam" get 50 recorded, not 65.
+        # question count (post-sampling/range/filter). Users who asked
+        # for "65 from a 50-question exam" get 50 recorded, not 65.
         effective_count = len(sampled_ids)
+
 
         session = start_session(
             db,
@@ -326,9 +478,15 @@ def compute_session_score(
 # time budgets without re-deriving it. The pattern mirrors how the
 # Designer uses ``SAVED_LABEL_TEXT`` etc.
 __all__ = [
+    "QuestionSelection",
+    "SelectAll",
+    "SelectIncorrect",
+    "SelectRange",
     "SessionScore",
     "StartedSession",
     "compute_session_score",
+    "list_incorrect_question_ids",
     "start_runner_session",
     "submit_runner_answer",
 ]
+

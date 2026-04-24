@@ -1,7 +1,8 @@
 """Visual CertExam-style "Exam Mode" dialog for the Runner picker.
 
 Opened from the picker card's Start… button. Collects candidate name,
-desired question count, training/exam toggle and optional timer, then
+question-selection strategy (take N / take range / questions I got
+wrong ≥ K times), training/exam toggle and optional timer, then
 launches a session via :func:`start_runner_session` and pushes the
 fresh stash into ``app.storage.user``.
 """
@@ -13,6 +14,12 @@ from typing import Optional
 
 from nicegui import app, ui
 
+from posrat.runner.mode_selection import (
+    OPT_ALL,
+    OPT_INCORRECT,
+    OPT_RANGE,
+    resolve_selection_from_dialog,
+)
 from posrat.runner.orchestrator import start_runner_session
 from posrat.runner.picker import RunnerExamSummary
 from posrat.runner.session_state import (
@@ -32,11 +39,16 @@ FALLBACK_DEFAULT_QUESTION_COUNT = 65
 def open_mode_dialog(summary: RunnerExamSummary) -> None:
     """Open the VCE-style "Exam Mode" dialog for ``summary``.
 
-    Pre-fills candidate name from :func:`resolve_username`, the
-    requested question count from the exam's ``default_question_count``
-    (clamped to the pool), the timer from ``time_limit_minutes`` and
-    defaults the mode to *Training* with the timer on — mirrors the
-    screenshot the user shared during planning.
+    Three mutually exclusive question-selection modes:
+
+    1. **Take N questions from entire exam file** — default sample.
+    2. **Take question range X..Y** — 1-based inclusive slice.
+    3. **Take questions that I have answered incorrectly N+ times** —
+       filters the candidate's own finished sessions on this exam.
+
+    Pre-fills the candidate name from :func:`current_runner_username`,
+    timer from ``time_limit_minutes`` and defaults to *Training* mode
+    with the timer on.
     """
 
     default_count = min(
@@ -53,17 +65,23 @@ def open_mode_dialog(summary: RunnerExamSummary) -> None:
             value=current_runner_username(),
         ).classes("w-full")
 
-        ui.label(
-            f"Take N questions out of {summary.question_count} total."
-        ).classes("text-caption text-grey q-mt-sm")
-        count_input = ui.number(
-            "Take N questions",
-            value=default_count,
-            min=1,
-            max=summary.question_count,
-            step=1,
-            format="%d",
-        ).classes("w-full")
+        selection_group = ui.radio(
+            {
+                OPT_ALL: "Take N questions from entire exam file",
+                OPT_RANGE: "Take question range",
+                OPT_INCORRECT:
+                    "Take questions that I have answered incorrectly",
+            },
+            value=OPT_ALL,
+        ).props("inline=false")
+
+        count_input, range_start_input, range_end_input, wrong_input = (
+            _render_selection_inputs(
+                selection_group,
+                default_count=default_count,
+                pool_size=summary.question_count,
+            )
+        )
 
         training_toggle = ui.checkbox(
             "Training mode (immediate feedback)", value=True
@@ -85,25 +103,25 @@ def open_mode_dialog(summary: RunnerExamSummary) -> None:
                 ui.notify("Enter the candidate name.", type="negative")
                 return
 
-            try:
-                requested_count = int(count_input.value or 0)
-            except (TypeError, ValueError):
-                ui.notify("Invalid question count.", type="negative")
-                return
-            if requested_count <= 0:
-                ui.notify("Question count must be positive.", type="negative")
+            selection = resolve_selection_from_dialog(
+                mode=selection_group.value,
+                count_value=count_input.value,
+                range_start_value=range_start_input.value,
+                range_end_value=range_end_input.value,
+                wrong_value=wrong_input.value,
+                pool_size=summary.question_count,
+                notify=lambda msg: ui.notify(msg, type="negative"),
+            )
+            if selection is None:
                 return
 
-            time_limit: Optional[int] = None
-            if timer_toggle.value:
-                try:
-                    time_limit = int(timer_input.value or 0)
-                except (TypeError, ValueError):
-                    ui.notify("Invalid time.", type="negative")
-                    return
-                if time_limit <= 0:
-                    ui.notify("Time must be positive.", type="negative")
-                    return
+            time_limit = _resolve_timer(
+                enabled=bool(timer_toggle.value),
+                raw_value=timer_input.value,
+            )
+            if time_limit is False:
+                # _resolve_timer notified already; abort the start flow.
+                return
 
             mode = "training" if training_toggle.value else "exam"
 
@@ -113,7 +131,7 @@ def open_mode_dialog(summary: RunnerExamSummary) -> None:
                     exam_id=summary.exam_id,
                     mode=mode,
                     candidate_name=candidate,
-                    question_count=requested_count,
+                    selection=selection,
                     time_limit_minutes=time_limit,
                     passing_score=summary.passing_score,
                     target_score=summary.target_score,
@@ -153,6 +171,83 @@ def open_mode_dialog(summary: RunnerExamSummary) -> None:
             ui.button("Start", on_click=_on_start).props("color=primary")
 
     dialog.open()
+
+
+def _render_selection_inputs(
+    selection_group: ui.radio,
+    *,
+    default_count: int,
+    pool_size: int,
+):
+    """Render the per-option number inputs bound to the radio group.
+
+    Returns a 4-tuple ``(count, range_start, range_end, wrong)``; the
+    caller reads their ``.value`` attributes when the Start button
+    fires. Each input is wrapped in ``bind_enabled_from`` so only the
+    row matching the selected radio is active at any time.
+    """
+
+    with ui.row().classes("items-center q-gutter-sm q-mt-sm q-ml-md"):
+        ui.label("Take").classes("text-caption")
+        count_input = ui.number(
+            value=default_count,
+            min=1,
+            max=pool_size,
+            step=1,
+            format="%d",
+        ).classes("w-24")
+        ui.label(f"of {pool_size} questions").classes("text-caption")
+        count_input.bind_enabled_from(
+            selection_group, "value", lambda v: v == OPT_ALL
+        )
+
+    with ui.row().classes("items-center q-gutter-sm q-mt-sm q-ml-md"):
+        ui.label("Range from").classes("text-caption")
+        range_start_input = ui.number(
+            value=1, min=1, max=pool_size, step=1, format="%d",
+        ).classes("w-24")
+        ui.label("to").classes("text-caption")
+        range_end_input = ui.number(
+            value=pool_size, min=1, max=pool_size, step=1, format="%d",
+        ).classes("w-24")
+        range_start_input.bind_enabled_from(
+            selection_group, "value", lambda v: v == OPT_RANGE
+        )
+        range_end_input.bind_enabled_from(
+            selection_group, "value", lambda v: v == OPT_RANGE
+        )
+
+    with ui.row().classes("items-center q-gutter-sm q-mt-sm q-ml-md"):
+        wrong_input = ui.number(
+            value=1, min=1, step=1, format="%d",
+        ).classes("w-24")
+        ui.label("or more times").classes("text-caption")
+        wrong_input.bind_enabled_from(
+            selection_group, "value", lambda v: v == OPT_INCORRECT
+        )
+
+    return count_input, range_start_input, range_end_input, wrong_input
+
+
+def _resolve_timer(*, enabled: bool, raw_value) -> Optional[int]:
+    """Parse the timer inputs into ``None`` / a positive int.
+
+    Returns ``False`` (sentinel) when the value is invalid — caller
+    must then abort the Start flow. ``False`` is distinct from
+    ``None`` so a typo is not accidentally treated as "timer off".
+    """
+
+    if not enabled:
+        return None
+    try:
+        value = int(raw_value or 0)
+    except (TypeError, ValueError):
+        ui.notify("Invalid time.", type="negative")
+        return False  # type: ignore[return-value]
+    if value <= 0:
+        ui.notify("Time must be positive.", type="negative")
+        return False  # type: ignore[return-value]
+    return value
 
 
 __all__ = [

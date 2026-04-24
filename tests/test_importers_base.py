@@ -2,7 +2,7 @@
 """Unit tests for the importer registry + intermediate dataclasses (step 8.0).
 
 These tests only exercise the *registration* machinery and the structural
-invariants of the intermediate dataclasses. Concrete parsers (ExamTopics RTF)
+invariants of the intermediate dataclasses. Concrete parsers (practice-exam RTF)
 are tested in their own modules because they need fixture files and depend
 on the RTF stripper built in step 8.1.
 """

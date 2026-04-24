@@ -1,13 +1,14 @@
 
 # posrat/importers/rtf_utils.py
-"""Minimal, dependency-free RTF text extractor tailored to ExamTopics dumps.
+"""Minimal, dependency-free RTF text extractor tailored to practice-exam dumps.
 
-The ExamTopics bulk import flow (Fáze 8) feeds us plain RTF files. A real
-RTF parser would be overkill — ExamTopics' output uses only a tiny subset of
-the spec (plain paragraphs, ``\\par``/``\\line`` breaks, hex-escaped CR bytes
-as Q-label separators, occasional ``{\\pict ...}`` image groups). Pulling in
-a third-party library for this would add deployment weight and a new attack
-surface for essentially one-shot parsing.
+The RTF bulk import flow (Fáze 8) feeds us plain RTF files. A real
+RTF parser would be overkill — the practice-exam RTF dumps we target use
+only a tiny subset of the spec (plain paragraphs, ``\\par``/``\\line``
+breaks, hex-escaped CR bytes as Q-label separators, occasional
+``{\\pict ...}`` image groups). Pulling in a third-party library for this
+would add deployment weight and a new attack surface for essentially
+one-shot parsing.
 
 This module therefore implements a focused hand-written stripper with one
 public helper:
@@ -16,7 +17,7 @@ public helper:
 
 Why return the images alongside the text instead of inline:
 
-* The downstream ExamTopics parser (step 8.2) needs clean text to regex on.
+* The downstream RTF-questions parser (step 8.2) needs clean text to regex on.
   Keeping the image bytes out of the text stream means it can do that with
   simple ``Q<N>`` tokenization without worrying about binary pollution.
 * The conversion step (step 8.4) persists images to ``assets/`` *only* for
@@ -46,7 +47,7 @@ but reject anything else."""
 def _decode_pict_payload(raw: str) -> bytes:
     """Decode the hex body of a ``{\\pict ...}`` group to raw image bytes.
 
-    ExamTopics wraps the image bytes in ASCII hex with arbitrary newlines and
+    The RTF dump wraps the image bytes in ASCII hex with arbitrary newlines and
     spaces inserted for line-wrapping. We strip every non-hex character (the
     RTF spec guarantees the hex stream itself contains only ``0-9a-fA-F``)
     and decode the remaining even-length run.
@@ -187,7 +188,7 @@ def strip_rtf_to_text(
 
     Notes
     -----
-    Key handling rules, matching the RTF 1.9 spec as far as ExamTopics exercises it:
+    Key handling rules, matching the RTF 1.9 spec as far as the practice-exam RTF dump exercises it:
 
     * ``\\par`` and ``\\line`` expand to ``\\n``. Other control words
       (``\\pard``, ``\\f0``, ``\\fs20``, ``\\li0``, ...) are silently consumed
@@ -228,7 +229,7 @@ def strip_rtf_to_text(
 
     # Stack of Unicode-character skip counts (``\ucN``). RTF scopes \uc to
     # the current group, inheriting the parent's value on group entry and
-    # popping on group exit. ExamTopics emits \uc1 at the top of the file.
+    # popping on group exit. The practice-exam RTF dumps emit \uc1 at the top.
     uc_stack: list[int] = [1]
     # Parallel stack of "are we inside a skipped destination group?" flags.
     # When the top is True, every character (including nested groups) is

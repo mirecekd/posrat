@@ -6,15 +6,10 @@ clickable: clicking a row stores the session identifiers under
 :data:`RUNNER_DETAIL_STORAGE_KEY` and triggers a page refresh that
 routes into :func:`posrat.runner.session_detail_view.render_session_detail`.
 
-Layout decisions:
-
-* One card per session, ordered newest-first (already sorted by the
-  helper).
-* Colour-coded passed/failed chip when the session snapshot carried
-  a passing score. Sessions still in progress (``finished_at`` None)
-  render with a neutral "in progress" label.
-* ``cursor-pointer`` on the whole card signals "this is clickable"
-  without a separate button — keeps the panel compact.
+Each card also shows a small trash-icon button that opens a
+confirmation dialog and deletes the session (and its answers) via
+:func:`posrat.storage.delete_session`. The picker refreshes
+afterwards so the row disappears from the history panel.
 """
 
 from __future__ import annotations
@@ -25,6 +20,7 @@ from nicegui import app, ui
 
 from posrat.runner.history import SessionResultSummary, list_session_results
 from posrat.runner.session_detail_view import RUNNER_DETAIL_STORAGE_KEY
+from posrat.storage import delete_session, open_db
 
 
 #: Display title for the right-hand history panel.
@@ -72,41 +68,122 @@ def _open_session_detail(result: SessionResultSummary) -> None:
 def _render_result_card(result: SessionResultSummary) -> None:
     """Render one session summary row in the history panel.
 
-    The card is clickable (``cursor-pointer`` + ``on("click")``)
-    and opens the per-question drill-down on click. The explicit
-    "Detail" button stays too so keyboard / screen-reader users
-    have an obvious target; both paths call
-    :func:`_open_session_detail`.
+    The card body (everything except the trash icon) is clickable
+    and opens the per-question drill-down. The trash-icon button in
+    the top-right corner calls :func:`_confirm_delete_session`, which
+    opens a ``ui.dialog`` for explicit confirmation — no
+    single-click deletions so accidental taps cannot destroy data.
     """
 
-    with ui.card().classes(
-        "w-full cursor-pointer"
-    ).props("bordered") as card:
-        card.on("click", lambda _evt=None, r=result: _open_session_detail(r))
-        # Top row: exam name + PASS/FAIL/in-progress chip.
-        with ui.row().classes("items-center q-gutter-sm w-full no-wrap"):
+    with ui.card().classes("w-full").props("bordered"):
+        # Top row: exam name + PASS/FAIL/in-progress chip + delete button.
+        with ui.row().classes(
+            "items-center q-gutter-sm w-full no-wrap cursor-pointer"
+        ) as top_row:
+            top_row.on(
+                "click",
+                lambda _evt=None, r=result: _open_session_detail(r),
+            )
             ui.label(result.exam_name).classes("text-subtitle1 col-grow")
             _render_state_chip(result)
 
-        # Candidate + mode + started timestamp in a caption row.
-        details: list[str] = []
-        details.append(f"Candidate: {result.candidate_name or '(unknown)'}")
-        details.append(f"Mode: {result.mode}")
-        details.append(_format_started_at(result.started_at))
-        ui.label(" · ".join(details)).classes("text-caption text-grey")
+        _render_delete_button(result)
 
-        # Score line: "N correct / M total · XX.X % · Y/Z points"
-        score_parts = [
-            f"{result.score.correct_count} correct / {result.score.total_count}"
-        ]
-        if result.score.percent is not None:
-            score_parts.append(f"{result.score.percent:.1f} %")
-        if result.score.raw_score is not None:
-            # SessionScore does not carry the target_score; the
-            # drill-down detail view shows ``X / Y points`` instead
-            # because it can read target_score from the session row.
-            score_parts.append(f"{result.score.raw_score} points")
-        ui.label(" · ".join(score_parts)).classes("text-body2")
+        # Candidate + mode + started timestamp in a caption row. Wrap
+        # in a clickable div so we keep the "click anywhere" drill-down
+        # affordance without swallowing clicks on the delete button.
+        with ui.column().classes("cursor-pointer w-full") as body:
+            body.on(
+                "click",
+                lambda _evt=None, r=result: _open_session_detail(r),
+            )
+            details: list[str] = []
+            details.append(
+                f"Candidate: {result.candidate_name or '(unknown)'}"
+            )
+            details.append(f"Mode: {result.mode}")
+            details.append(_format_started_at(result.started_at))
+            ui.label(" · ".join(details)).classes("text-caption text-grey")
+
+            # Score line: "N correct / M total · XX.X % · Y points"
+            score_parts = [
+                f"{result.score.correct_count} correct "
+                f"/ {result.score.total_count}"
+            ]
+            if result.score.percent is not None:
+                score_parts.append(f"{result.score.percent:.1f} %")
+            if result.score.raw_score is not None:
+                # SessionScore does not carry the target_score; the
+                # drill-down detail view shows ``X / Y points`` instead
+                # because it can read target_score from the session row.
+                score_parts.append(f"{result.score.raw_score} points")
+            ui.label(" · ".join(score_parts)).classes("text-body2")
+
+
+def _render_delete_button(result: SessionResultSummary) -> None:
+    """Render the trash-icon button in the card's top-right corner.
+
+    Floated right via absolute-positioned row so it does not steal
+    horizontal space from the exam name label — NiceGUI's flexbox
+    already gave that row its own layout.
+    """
+
+    with ui.row().classes("justify-end w-full"):
+        ui.button(
+            icon="delete",
+            on_click=lambda _evt=None, r=result: _confirm_delete_session(r),
+        ).props("flat dense color=negative size=sm").tooltip(
+            "Delete this session"
+        )
+
+
+def _confirm_delete_session(result: SessionResultSummary) -> None:
+    """Open a confirmation dialog and, on accept, delete the session.
+
+    Uses a plain ``ui.dialog`` with two buttons (Cancel / Delete)
+    rather than Quasar's quick-confirm API so the verbiage clearly
+    mentions the irreversible cascade into the answers table.
+    """
+
+    with ui.dialog() as dialog, ui.card():
+        ui.label(
+            f"Delete session from {_format_started_at(result.started_at)}?"
+        ).classes("text-subtitle1")
+        ui.label(
+            "This removes the session row and all its recorded "
+            "answers. The action cannot be undone."
+        ).classes("text-caption text-grey")
+        with ui.row().classes("justify-end q-gutter-sm q-mt-sm"):
+            ui.button("Cancel", on_click=dialog.close).props("flat")
+            ui.button(
+                "Delete",
+                on_click=lambda _evt=None: _do_delete(result, dialog),
+            ).props("color=negative")
+    dialog.open()
+
+
+def _do_delete(result: SessionResultSummary, dialog: ui.dialog) -> None:
+    """Execute the delete and refresh the picker so the row disappears."""
+
+    db = open_db(result.exam_path)
+    try:
+        removed = delete_session(db, result.session_id)
+    finally:
+        db.close()
+    dialog.close()
+    if removed:
+        ui.notify("Session deleted.")
+    else:
+        # Very rare — the row vanished between render and confirm.
+        ui.notify(
+            "Session was already gone (refreshing history).",
+            type="warning",
+        )
+
+    # Refresh the entire Runner body so picker_view redraws the
+    # history panel without the deleted session.
+    from posrat.runner.page import _render_runner_body
+    _render_runner_body.refresh()
 
 
 def _render_state_chip(result: SessionResultSummary) -> None:

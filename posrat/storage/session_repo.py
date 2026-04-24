@@ -204,6 +204,31 @@ def list_sessions(
     return [_row_to_session(db, row) for row in rows]
 
 
+def delete_session(
+    db: sqlite3.Connection,
+    session_id: str,
+) -> bool:
+    """Delete the session row and (via ON DELETE CASCADE) its answers.
+
+    Returns ``True`` when a row was removed, ``False`` when the session
+    did not exist — mirrors the idempotent-no-op contract of
+    :func:`posrat.storage.question_repo.delete_question`.
+
+    The ``answers.session_id`` FK has ``ON DELETE CASCADE`` (migration
+    7 in :mod:`posrat.storage.schema`) so per-question answers go away
+    in the same transaction. We rely on that cascade instead of a
+    manual ``DELETE FROM answers`` to keep the DAO a one-statement
+    operation; the schema migration is the authoritative place that
+    declares the relationship.
+    """
+
+    with db:
+        cursor = db.execute(
+            "DELETE FROM sessions WHERE id = ?", (session_id,)
+        )
+    return cursor.rowcount > 0
+
+
 def record_answer(
     db: sqlite3.Connection,
     session_id: str,

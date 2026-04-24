@@ -1,6 +1,15 @@
 
-# posrat/importers/examtopics.py
-"""ExamTopics RTF bulk-import parser (Phase 8.2)."""
+# posrat/importers/rtf_questions.py
+"""RTF bulk-import parser for practice-exam dumps (Phase 8.2).
+
+Targets RTF files produced by exam-dump tools that emit one question
+per ``Q<N>\\r`` block (with ``\\r`` being a literal CR byte embedded as
+``\\'0d``), followed by the question body, A./B./... choices, an
+``Answer: X`` line, and an optional ``Community vote distribution``
+section. Historically this was the "RTF dump" shape popularised by
+several practice-exam sites; the parser is vendor-agnostic and only
+looks at the structural markers described above.
+"""
 
 from __future__ import annotations
 
@@ -27,7 +36,7 @@ _Q_LABEL_RE: Final[re.Pattern[str]] = re.compile(
 )
 """Matches a Q-label at the start of a line, followed by a carriage-return.
 
-ExamTopics RTF encodes the question number as ``Q<N>\\r`` on its own
+The RTF dump encodes the question number as ``Q<N>\\r`` on its own
 (the \\r is a literal CR byte embedded via ``\\'0d``). The pattern anchors
 to the start of a line (``^``, with MULTILINE) so random ``Q`` characters
 inside question bodies don't trigger a split.
@@ -244,9 +253,9 @@ def _parse_block(
     )
 
 
-class ExamTopicsParser:
-    source_id = "examtopics"
-    display_name = "ExamTopics RTF"
+class RtfQuestionsParser:
+    source_id = "rtf_questions"
+    display_name = "Practice-exam RTF"
     file_extensions = (".rtf",)
 
     def parse(self, path: Path) -> ParseResult:
@@ -272,4 +281,4 @@ class ExamTopicsParser:
         )
 
 
-register_import_source(ExamTopicsParser())
+register_import_source(RtfQuestionsParser())

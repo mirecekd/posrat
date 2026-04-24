@@ -5,7 +5,7 @@
 The module defines:
 
 * The :class:`ImportSource` runtime-checkable Protocol that every concrete
-  parser (ExamTopics RTF, Whizlabs JSON, ...) implements.
+  parser (practice-exam RTF, CertExam PDF, HTML dump, ...) implements.
 * Intermediate dataclasses (:class:`ParsedQuestion`, :class:`ParsedChoice`,
   :class:`ParsedImage`, :class:`ParseError`, :class:`ParseResult`) that
   decouple *format-specific* parsing from *storage-specific* persistence.
@@ -200,7 +200,7 @@ class ParsedChoice:
     is_correct:
         True when the source marks this choice as the (or one of the) correct
         answer(s). Parser is responsible for translating the source-specific
-        convention into this flag (e.g. ExamTopics' ``Answer: D`` => choice
+        convention into this flag (e.g. the RTF dump's ``Answer: D`` => choice
         with letter ``D`` has ``is_correct=True``).
     """
 
@@ -261,14 +261,15 @@ class ParsedQuestion:
     choices:
         Ordered list of :class:`ParsedChoice`. At minimum two entries are
         expected for ``single_choice`` / ``multi_choice``; empty list is
-        allowed only for ``hotspot`` (which ExamTopics does not emit).
+        allowed only for ``hotspot`` (which the current RTF/HTML/PDF
+        parsers do not emit).
     question_type:
         One of ``"single_choice"``, ``"multi_choice"``, ``"hotspot"``. Parsers
         infer this from source cues (e.g. "Choose two." => multi_choice).
         If the cue is ambiguous, the parser should default to
         ``"single_choice"`` and attach a warning.
     explanation:
-        Optional free-form text. ExamTopics uses this slot for the
+        Optional free-form text. Parsers use this slot for the
         human-readable community-vote distribution (``"Community vote:
         A (93%), 7%"``).
     images:
@@ -346,11 +347,11 @@ class ImportSource(Protocol):
     """
 
     source_id: str
-    """Stable machine identifier (``"examtopics"``). Used as the key in
+    """Stable machine identifier (``"rtf_questions"``). Used as the key in
     :data:`IMPORT_SOURCES` and as the ``value`` of the UI dropdown option."""
 
     display_name: str
-    """Human-readable label for the UI (``"ExamTopics RTF"``)."""
+    """Human-readable label for the UI (``"Practice-exam RTF"``)."""
 
     file_extensions: tuple[str, ...]
     """Accepted file suffixes **including the leading dot** (``(".rtf",)``).

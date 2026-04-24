@@ -4,15 +4,15 @@
 Parses the PDF exports produced by the Visual CertExam **Exam Designer**
 ("Export to PDF") — a common distribution format for AWS / Azure /
 Cisco VCE-style practice exams. The layout is very close to the
-ExamTopics RTF dumps (same per-question block shape: ``QUESTION <N>``,
+practice-exam RTF dumps (same per-question block shape: ``QUESTION <N>``,
 ``A. ... D.``, ``Correct Answer: <letters>``, optional community-vote
 distribution). We therefore share as much of the parsing shape with
-:mod:`posrat.importers.examtopics` as possible, but the *source*
+:mod:`posrat.importers.rtf_questions` as possible, but the *source*
 extraction is completely different — we rely on :mod:`pypdf` to pull
 plain text out of the PDF and then regex-tokenise the stream the same
 way the RTF parser does.
 
-Why a separate parser instead of extending ExamTopics:
+Why a separate parser instead of extending the RTF parser:
 
 * Extraction path differs fundamentally (PDF -> text via pypdf vs RTF
   control-word stripping). Keeping them in one module would force a
@@ -48,7 +48,7 @@ from posrat.importers.base import (
     normalize_paragraphs,
     register_import_source,
 )
-from posrat.importers.examtopics import _parse_answer_letters
+from posrat.importers.rtf_questions import _parse_answer_letters
 
 _log = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ _ANSWER_RE: Final[re.Pattern[str]] = re.compile(
 )
 """Matches the answer line: ``Correct Answer: A`` or ``Correct Answer: BC``.
 
-Note the difference from ExamTopics (``Answer: ...``) — CertExam
+Note the difference from the RTF dump (``Answer: ...``) — CertExam
 Designer uses the longer ``Correct Answer:`` prefix verbatim.
 """
 
@@ -106,7 +106,7 @@ _COMMUNITY_RE: Final[re.Pattern[str]] = re.compile(
     r"(?i)^Community vote distribution",
 )
 """Marks the start of the community-vote section, which we preserve as
-the question's explanation (matches the ExamTopics convention so the
+the question's explanation (matches the RTF parser's convention so the
 Designer's Reference field looks consistent across sources)."""
 
 _MULTI_CHOICE_RE: Final[re.Pattern[str]] = re.compile(
@@ -265,7 +265,7 @@ def _parse_block(n: int, block: str) -> ParsedQuestion | ParseError:
 
     The community-vote block (when present) is preserved as the
     ``explanation`` so the Designer's Reference field shows the
-    voting context — same convention as the ExamTopics parser.
+    voting context — same convention as the RTF parser.
 
     The function never raises; malformed blocks degrade gracefully to
     :class:`ParseError` records that the preview dialog surfaces in an

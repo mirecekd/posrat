@@ -16,12 +16,23 @@ import pytest
 
 from posrat.models import Answer, Choice, Exam, Question, Session
 from posrat.runner.orchestrator import (
+    SelectAll,
+    SelectIncorrect,
+    SelectRange,
     SessionScore,
     compute_session_score,
+    list_incorrect_question_ids,
     start_runner_session,
     submit_runner_answer,
 )
-from posrat.storage import create_exam, get_session, list_sessions, open_db
+from posrat.storage import (
+    create_exam,
+    finish_session,
+    get_session,
+    list_sessions,
+    open_db,
+)
+
 
 
 def _seed_exam(
@@ -448,3 +459,212 @@ def test_record_answer_replaces_on_resubmit(tmp_path) -> None:
         db.close()
     assert len(rows) == 1
     assert rows[0]["is_correct"] == 1  # the later, correct answer won
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12 — QuestionSelection strategies (range / incorrect)                 #
+# --------------------------------------------------------------------------- #
+
+
+def test_start_runner_session_select_range_preserves_order(tmp_path) -> None:
+    """SelectRange(3, 5) on a 10-question pool yields q-2 q-3 q-4 in order."""
+
+    path = _seed_exam(tmp_path, question_count=10)
+    started = start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="dev",
+        selection=SelectRange(start=3, end=5),
+        session_id="s-range",
+        started_at="2026-04-23T10:00:00Z",
+    )
+    assert started.question_ids == ["q-2", "q-3", "q-4"]
+    assert started.session.question_count == 3
+
+
+def test_start_runner_session_select_all_with_count(tmp_path) -> None:
+    """Explicit SelectAll(count=2) behaves exactly like the legacy alias."""
+
+    path = _seed_exam(tmp_path, question_count=5)
+    started = start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="dev",
+        selection=SelectAll(count=2),
+        session_id="s-all",
+        started_at="2026-04-23T10:00:00Z",
+        rng=random.Random(42),
+    )
+    assert len(started.question_ids) == 2
+    assert started.session.question_count == 2
+
+
+def test_start_runner_session_select_incorrect_filters_per_user(tmp_path) -> None:
+    """SelectIncorrect only picks questions the same candidate got wrong.
+
+    Scenario: ``dev`` runs two finished sessions and gets q-0 + q-2
+    wrong in one of them. Starting a new session with
+    ``SelectIncorrect(min_wrong_count=1)`` therefore yields exactly
+    those two ids, in their ``order_index`` order.
+    """
+
+    path = _seed_exam(tmp_path, question_count=5)
+
+    # Seed a finished session with 2 wrong answers for "dev".
+    start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="dev",
+        question_count=5,
+        session_id="s-hist-1",
+        started_at="2026-04-23T10:00:00Z",
+        rng=random.Random(0),
+    )
+    submit_runner_answer(
+        path, session_id="s-hist-1", question_id="q-0",
+        payload={"choice_id": "q-0-b"},  # wrong
+    )
+    submit_runner_answer(
+        path, session_id="s-hist-1", question_id="q-2",
+        payload={"choice_id": "q-2-b"},  # wrong
+    )
+    submit_runner_answer(
+        path, session_id="s-hist-1", question_id="q-1",
+        payload={"choice_id": "q-1-a"},  # correct — must NOT be picked
+    )
+
+    # Also seed a different candidate with a wrong answer — must NOT leak.
+    start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="other-user",
+        question_count=5,
+        session_id="s-hist-other",
+        started_at="2026-04-23T10:01:00Z",
+        rng=random.Random(0),
+    )
+    submit_runner_answer(
+        path, session_id="s-hist-other", question_id="q-3",
+        payload={"choice_id": "q-3-b"},  # wrong
+    )
+
+    # Mark both sessions finished so they count toward the filter.
+    db = open_db(path)
+    try:
+        finish_session(db, "s-hist-1", finished_at="2026-04-23T10:30:00Z")
+        finish_session(db, "s-hist-other", finished_at="2026-04-23T10:31:00Z")
+    finally:
+        db.close()
+
+    started = start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="dev",
+        selection=SelectIncorrect(min_wrong_count=1),
+        session_id="s-retry",
+        started_at="2026-04-23T11:00:00Z",
+    )
+    assert started.question_ids == ["q-0", "q-2"]
+    assert started.session.question_count == 2
+
+
+def test_start_runner_session_select_incorrect_ignores_in_progress(tmp_path) -> None:
+    """Sessions without ``finished_at`` do not count toward the filter."""
+
+    path = _seed_exam(tmp_path, question_count=3)
+    start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="dev",
+        question_count=3,
+        session_id="s-open",
+        started_at="2026-04-23T10:00:00Z",
+        rng=random.Random(0),
+    )
+    submit_runner_answer(
+        path, session_id="s-open", question_id="q-0",
+        payload={"choice_id": "q-0-b"},  # wrong — but session is not finished
+    )
+
+    # Unfinished session → no data for the filter → empty → ValueError.
+    with pytest.raises(ValueError):
+        start_runner_session(
+            path,
+            exam_id="e1",
+            mode="training",
+            candidate_name="dev",
+            selection=SelectIncorrect(min_wrong_count=1),
+            session_id="s-retry",
+            started_at="2026-04-23T10:30:00Z",
+        )
+
+
+def test_list_incorrect_question_ids_respects_min_wrong_count(tmp_path) -> None:
+    """``min_wrong_count`` threshold filters out questions with too few fails."""
+
+    path = _seed_exam(tmp_path, question_count=4)
+
+    # Session A: q-0 wrong, q-1 wrong.
+    start_runner_session(
+        path, exam_id="e1", mode="training", candidate_name="dev",
+        question_count=4, session_id="sA",
+        started_at="2026-04-23T09:00:00Z", rng=random.Random(0),
+    )
+    submit_runner_answer(
+        path, session_id="sA", question_id="q-0",
+        payload={"choice_id": "q-0-b"},
+    )
+    submit_runner_answer(
+        path, session_id="sA", question_id="q-1",
+        payload={"choice_id": "q-1-b"},
+    )
+
+    # Session B: q-0 wrong again (so q-0 has 2 fails, q-1 has 1).
+    start_runner_session(
+        path, exam_id="e1", mode="training", candidate_name="dev",
+        question_count=4, session_id="sB",
+        started_at="2026-04-23T10:00:00Z", rng=random.Random(1),
+    )
+    submit_runner_answer(
+        path, session_id="sB", question_id="q-0",
+        payload={"choice_id": "q-0-b"},
+    )
+
+    db = open_db(path)
+    try:
+        finish_session(db, "sA", finished_at="2026-04-23T09:30:00Z")
+        finish_session(db, "sB", finished_at="2026-04-23T10:30:00Z")
+
+        at_least_one = list_incorrect_question_ids(
+            db, exam_id="e1", candidate_name="dev", min_wrong_count=1
+        )
+        at_least_two = list_incorrect_question_ids(
+            db, exam_id="e1", candidate_name="dev", min_wrong_count=2
+        )
+    finally:
+        db.close()
+
+    assert at_least_one == ["q-0", "q-1"]
+    # Only q-0 reaches the ≥2 threshold.
+    assert at_least_two == ["q-0"]
+
+
+def test_list_incorrect_question_ids_rejects_zero_threshold(tmp_path) -> None:
+    """``min_wrong_count < 1`` is a programming error."""
+
+    path = _seed_exam(tmp_path)
+    db = open_db(path)
+    try:
+        with pytest.raises(ValueError):
+            list_incorrect_question_ids(
+                db, exam_id="e1", candidate_name="dev", min_wrong_count=0
+            )
+    finally:
+        db.close()
+
