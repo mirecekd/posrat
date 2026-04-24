@@ -1,0 +1,30 @@
+services:
+  posrat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: posrat:latest
+    container_name: posrat
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Persistent storage-secret (cookies survive container restarts).
+      # Change this for your deployment; keep it stable across upgrades.
+      POSRAT_STORAGE_SECRET: "change-me-to-a-long-random-string"
+
+      # Bootstrap the initial admin account on first start.
+      # Once an admin exists, these are ignored (see posrat.system.bootstrap).
+      POSRAT_ADMIN_USERNAME: "admin"
+      POSRAT_ADMIN_PASSWORD: "change-me"
+      POSRAT_ADMIN_DISPLAY_NAME: "Administrator"
+
+      # Data dir / no-browser are already set in the image, but kept here
+      # as documentation for operators.
+      POSRAT_DATA_DIR: "/data"
+      POSRAT_NO_BROWSER: "1"
+    volumes:
+      - posrat-data:/data
+
+volumes:
+  posrat-data:

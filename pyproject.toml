@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "posrat"
+version = "0.10.0"
+description = "Personal Online Study, Review & Assessment Tool"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Miroslav Dvorak", email = "mirdvorak@trask.cz" },
+]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "nicegui",
+    "pydantic>=2,<3",
+    "bcrypt>=4.0",
+    "pypdf>=5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[project.scripts]
+posrat = "posrat.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["posrat*"]
+exclude = ["tests*", "examples*", "docs*", "memory-bank*"]

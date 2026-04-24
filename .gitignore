@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.venv/
+venv/
+
+# Virtualenvwrapper (env je mimo repo, ale pro jistotu)
+/.virtualenvs/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite žurnály a zálohy
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db-journal
+
+# POSRAT runtime artefakty (ne commitovat uživatelská data)
+/user-data/
+/runs/
+/data/
+
+# NiceGUI per-user storage (běží za ui.run, regeneruje se za provozu)
+/.nicegui/
+
+# Memory-bank je lokální kontext pro Cline, ne součást repozitáře
+/memory-bank/
+
+# Tajemství
+.env
+.env.*
+!.env.example
+
+# NiceGUI runtime storage (may appear in subdirs when tests run from them)
+.nicegui/
+
+instukce-posrat.txt

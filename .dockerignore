@@ -1,0 +1,53 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Python caches / build artifacts
+__pycache__
+*.py[cod]
+*$py.class
+*.egg-info
+*.egg
+build/
+dist/
+.venv
+venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+coverage.xml
+htmlcov
+
+# Docker / IDE
+Dockerfile
+.dockerignore
+docker-compose*.yml
+.vscode
+.idea
+
+# Project runtime artifacts — must never leak into the image
+data/
+user-data/
+runs/
+.nicegui/
+
+# Local context & docs (not needed at runtime)
+memory-bank/
+docs/
+examples/
+tests/
+instukce-posrat.txt
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+instukce-posrat.txt
+

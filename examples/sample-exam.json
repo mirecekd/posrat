@@ -1,0 +1,68 @@
+{
+  "id": "posrat-sample-aws-basics",
+  "name": "POSRAT sample — AWS basics",
+  "description": "Minimal sample exam used as a contract smoke test for the JSON bundle format. Exercises all three question types.",
+  "questions": [
+    {
+      "id": "q-object-storage",
+      "type": "single_choice",
+      "text": "Which AWS service is best suited as a durable, scalable object store?",
+      "explanation": "Amazon S3 is the primary object storage service on AWS. EBS is block storage attached to EC2; EFS is a managed NFS filesystem.",
+      "choices": [
+        { "id": "q-object-storage-c-s3", "text": "Amazon S3", "is_correct": true },
+        { "id": "q-object-storage-c-ebs", "text": "Amazon EBS", "is_correct": false },
+        { "id": "q-object-storage-c-efs", "text": "Amazon EFS", "is_correct": false },
+        { "id": "q-object-storage-c-glacier", "text": "Amazon Glacier (vault)", "is_correct": false }
+      ],
+      "image_path": null,
+      "hotspot": null
+    },
+    {
+      "id": "q-compute-services",
+      "type": "multi_choice",
+      "text": "Which of the following are AWS compute services? (Pick all that apply.)",
+      "explanation": "EC2 runs long-lived virtual machines, Lambda runs event-driven functions, and Fargate runs containers without managing servers. S3 is storage, not compute.",
+      "choices": [
+        { "id": "q-compute-services-c-ec2", "text": "Amazon EC2", "is_correct": true },
+        { "id": "q-compute-services-c-lambda", "text": "AWS Lambda", "is_correct": true },
+        { "id": "q-compute-services-c-fargate", "text": "AWS Fargate", "is_correct": true },
+        { "id": "q-compute-services-c-s3", "text": "Amazon S3", "is_correct": false }
+      ],
+      "image_path": null,
+      "hotspot": null
+    },
+    {
+      "id": "q-service-matching",
+      "type": "hotspot",
+      "text": "For each capability, pick the AWS service that fits best.",
+      "explanation": "S3 is durable object storage, EC2 provides long-running virtual machines, and Lambda runs short event-driven functions.",
+      "choices": [],
+      "image_path": null,
+      "hotspot": {
+        "options": [
+          { "id": "o-s3", "text": "Amazon S3" },
+          { "id": "o-ec2", "text": "Amazon EC2" },
+          { "id": "o-lambda", "text": "AWS Lambda" },
+          { "id": "o-rds", "text": "Amazon RDS" }
+        ],
+        "steps": [
+          {
+            "id": "step-object-storage",
+            "prompt": "Durable object storage for static assets",
+            "correct_option_id": "o-s3"
+          },
+          {
+            "id": "step-virtual-machine",
+            "prompt": "Long-running virtual machine with full OS control",
+            "correct_option_id": "o-ec2"
+          },
+          {
+            "id": "step-event-function",
+            "prompt": "Short-lived, event-driven function execution",
+            "correct_option_id": "o-lambda"
+          }
+        ]
+      }
+    }
+  ]
+}
