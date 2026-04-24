@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "posrat"
-version = "0.10.0"
+version = "2026.04.24+8914335"
 description = "Personal Online Study, Review & Assessment Tool"
 readme = "README.md"
 requires-python = ">=3.10"
