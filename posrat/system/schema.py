@@ -142,5 +142,29 @@ MIGRATIONS: dict[int, str] = {
         updated_at TEXT NOT NULL
     );
     """,
+    # Phase 14 step 1 — per-user feature gating for AI chat + Runner
+    # explanation visibility.
+    #
+    # Two independent flags added as ``NOT NULL DEFAULT 1`` so existing
+    # rows upgrade in place *without* a visible change — everyone who
+    # already has an account keeps both features. Admins can then turn
+    # either one off per user from the ``/admin`` Users tab.
+    #
+    # ``can_use_ai_chat`` gates the floating AI FAB (Designer + Runner
+    # training mode) and the smart-toy header button. The global
+    # ``ai_settings.enabled`` flag still wins: if the admin turned AI
+    # chat off system-wide, the per-user flag has no visible effect.
+    #
+    # ``can_see_explanation`` gates the "Explanation / reference" block
+    # that the Runner shows (training wrong-answer feedback strip +
+    # finished-session review cards). Designer editing is never
+    # gated — exam authors must always see the field they are editing.
+    5: """
+    ALTER TABLE users ADD COLUMN can_use_ai_chat INTEGER NOT NULL
+        DEFAULT 1 CHECK(can_use_ai_chat IN (0, 1));
+    ALTER TABLE users ADD COLUMN can_see_explanation INTEGER NOT NULL
+        DEFAULT 1 CHECK(can_see_explanation IN (0, 1));
+    """,
 }
+
 

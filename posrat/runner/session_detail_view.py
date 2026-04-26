@@ -31,6 +31,8 @@ from posrat.runner.session_detail import (
     load_session_detail,
 )
 from posrat.runner.view_helpers import choice_row_classes, letter_for
+from posrat.system.current_user import current_user_or_none
+
 
 
 #: Per-user storage key holding the drill-down target for the
@@ -144,12 +146,18 @@ def _render_question_card(review: QuestionReview) -> None:
 
         _render_review_body(review)
 
-        if question.explanation:
+        # Per-user gate (Phase 14): admins can hide the explanation
+        # block in session review cards. Re-evaluated per card to stay
+        # consistent with the Training-mode feedback strip.
+        _user = current_user_or_none()
+        _can_see_explanation = bool(_user and _user.can_see_explanation)
+        if question.explanation and _can_see_explanation:
             ui.separator().classes("q-my-sm")
             ui.label("Explanation / reference").classes(
                 "text-subtitle2"
             )
             ui.markdown(question.explanation).classes("text-body2")
+
 
 
 def _render_review_body(review: QuestionReview) -> None:

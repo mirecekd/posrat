@@ -47,7 +47,20 @@ class User(BaseModel):
         can_use_designer: Whether the user can reach ``/designer``.
             Runner access is implicit — every authenticated user can
             see the picker; per-exam access is gated later by ACL.
+        can_use_ai_chat: Whether the AI assistant (Bedrock chat) is
+            visible for this user. Gates the floating FAB in Designer
+            / Runner and the smart-toy icon in the shared header. The
+            global ``AISettings.enabled`` toggle still wins — if the
+            admin turned AI chat off system-wide, this per-user flag
+            has no visible effect. Default ``True`` so existing users
+            keep the feature after the migration lands.
+        can_see_explanation: Whether the Runner surfaces per-question
+            explanation / reference blocks (Training feedback strip +
+            finished-session detail review). Designer editing is never
+            gated — exam authors must always see the field they're
+            editing. Default ``True`` for backward compatibility.
         created_at: ISO-8601 UTC timestamp of account creation.
+
         last_login_at: ISO-8601 UTC timestamp of the most recent
             successful login, or ``None`` for accounts that have never
             signed in. Updated by the auth service (10.4) on each
@@ -61,8 +74,11 @@ class User(BaseModel):
     auth_source: AuthSource
     is_admin: bool = False
     can_use_designer: bool = False
+    can_use_ai_chat: bool = True
+    can_see_explanation: bool = True
     created_at: str = Field(..., min_length=1)
     last_login_at: Optional[str] = None
+
 
     @property
     def effective_display_name(self) -> str:

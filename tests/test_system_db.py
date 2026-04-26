@@ -206,3 +206,66 @@ def test_migrations_dict_starts_at_version_one() -> None:
     """Lowest migration key should be 1 (0 is the implicit empty DB)."""
 
     assert min(MIGRATIONS) == 1
+
+
+def test_migration_v5_upgrades_existing_v4_users_in_place(
+    tmp_path: Path,
+) -> None:
+    """Phase 14: v5 adds ``can_use_ai_chat`` / ``can_see_explanation``.
+
+    Existing user rows on a pre-v5 database must upgrade without data
+    loss, and the two new columns must default to ``1`` (= True) so
+    active accounts keep the AI chat + Runner-explanation they had.
+    """
+
+    import sqlite3
+
+    db_path = tmp_path / SYSTEM_DB_FILENAME
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        for version in sorted(v for v in MIGRATIONS if v <= 4):
+            connection.executescript(MIGRATIONS[version])
+            connection.execute(
+                "UPDATE schema_version SET version = ?", (version,)
+            )
+        connection.commit()
+
+        # Seed a pre-v5 user row with the old INSERT shape — no new
+        # columns in the column list.
+        connection.execute(
+            "INSERT INTO users (username, password_hash, display_name,"
+            " auth_source, is_admin, can_use_designer, created_at,"
+            " last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+            (
+                "legacy",
+                "bcrypt$stub",
+                None,
+                "internal",
+                0,
+                0,
+                "2026-04-25T00:00:00Z",
+            ),
+        )
+        connection.commit()
+
+        # Now run the rest of the migrations and confirm the row is
+        # intact with the new columns defaulted to on.
+        from posrat.system import apply_system_migrations
+
+        final = apply_system_migrations(connection)
+        assert final == CURRENT_SYSTEM_SCHEMA_VERSION
+
+        row = connection.execute(
+            "SELECT username, can_use_ai_chat, can_see_explanation"
+            " FROM users WHERE username = ?",
+            ("legacy",),
+        ).fetchone()
+        assert row is not None
+        assert row["username"] == "legacy"
+        assert row["can_use_ai_chat"] == 1
+        assert row["can_see_explanation"] == 1
+    finally:
+        connection.close()
+

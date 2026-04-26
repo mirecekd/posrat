@@ -25,6 +25,8 @@ from posrat.runner.submit_flow import (
     on_submit_answer,
 )
 from posrat.runner.view_helpers import choice_row_classes, letter_for
+from posrat.system.current_user import current_user_or_none
+
 
 
 def _render_end_exam_button(stash: dict) -> None:
@@ -347,11 +349,17 @@ def render_feedback_footer(question: Question, stash: dict) -> None:
     Continue + End exam buttons on the same row (End exam far right).
     """
 
-    if question.explanation:
+    # Per-user gate (Phase 14): admins can hide the explanation block
+    # for specific users even when the question carries one. The DAO
+    # default is ``True`` so existing users see the same UI as before.
+    _user = current_user_or_none()
+    _can_see_explanation = bool(_user and _user.can_see_explanation)
+    if question.explanation and _can_see_explanation:
         ui.label("Explanation / reference").classes(
             "text-subtitle2 q-mt-sm"
         )
         ui.markdown(question.explanation).classes("text-body2")
+
 
     with ui.row().classes("items-center w-full q-mt-md justify-between"):
         ui.button(

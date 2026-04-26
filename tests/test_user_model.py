@@ -80,6 +80,33 @@ def test_user_admin_flag_is_boolean() -> None:
     assert user.can_use_designer is True
 
 
+def test_user_feature_flags_default_to_true() -> None:
+    """Phase 14: new rows inherit AI chat + Explanation by default.
+
+    The DB migration v5 ships ``DEFAULT 1`` for both columns so
+    existing accounts aren't silently stripped of features; the
+    model mirror of that default lives here.
+    """
+
+    user = _make_user()
+    assert user.can_use_ai_chat is True
+    assert user.can_see_explanation is True
+
+
+def test_user_feature_flags_roundtrip_explicit_false() -> None:
+    """Admins can turn each flag off independently."""
+
+    user = _make_user(can_use_ai_chat=False, can_see_explanation=False)
+    assert user.can_use_ai_chat is False
+    assert user.can_see_explanation is False
+    dumped = user.model_dump()
+    assert dumped["can_use_ai_chat"] is False
+    assert dumped["can_see_explanation"] is False
+    rehydrated = User.model_validate(dumped)
+    assert rehydrated == user
+
+
+
 def test_user_effective_display_name_prefers_display_name() -> None:
     """UI helper picks the friendlier name when available."""
 

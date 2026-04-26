@@ -28,9 +28,11 @@ from posrat.system.users_repo import (
     create_user,
     delete_user,
     list_users,
+    update_user_features,
     update_user_password,
     update_user_roles,
 )
+
 
 
 @ui.refreshable
@@ -76,7 +78,10 @@ def _render_user_row(
                     f"{user.username} · {user.auth_source}"
                     + (" · admin" if user.is_admin else "")
                     + (" · designer" if user.can_use_designer else "")
+                    + (" · ai-chat" if user.can_use_ai_chat else "")
+                    + (" · explanation" if user.can_see_explanation else "")
                 ).classes("text-caption text-grey-7")
+
                 if user.last_login_at:
                     ui.label(f"Last login: {user.last_login_at}").classes(
                         "text-caption text-grey"
@@ -104,7 +109,32 @@ def _render_user_row(
                 ),
             )
 
+            ai_chat_toggle = ui.switch(
+                "AI chat", value=user.can_use_ai_chat
+            ).props("dense")
+            ai_chat_toggle.on(
+                "update:model-value",
+                lambda _evt=None, u=user: _toggle_features(
+                    u,
+                    ai_chat=ai_chat_toggle.value,
+                    explanation=None,
+                ),
+            )
+
+            explanation_toggle = ui.switch(
+                "Explanation", value=user.can_see_explanation
+            ).props("dense")
+            explanation_toggle.on(
+                "update:model-value",
+                lambda _evt=None, u=user: _toggle_features(
+                    u,
+                    ai_chat=None,
+                    explanation=explanation_toggle.value,
+                ),
+            )
+
             if user.auth_source == "internal":
+
                 ui.button(
                     "Reset password",
                     on_click=lambda _evt=None, u=user: _open_reset_password_dialog(u),
@@ -120,9 +150,42 @@ def _render_user_row(
                 delete_btn.props("disable")
 
 
+def _toggle_features(
+    user: User,
+    *,
+    ai_chat: Optional[bool],
+    explanation: Optional[bool],
+) -> None:
+    """Flip the per-user feature flags via the DAO and refresh.
+
+    Mirrors :func:`_toggle_roles`: each switch sends ``None`` for the
+    other flag so the UI can toggle AI chat and Explanation
+    independently without having to resubmit the sibling value.
+    """
+
+    new_ai_chat = user.can_use_ai_chat if ai_chat is None else ai_chat
+    new_explanation = (
+        user.can_see_explanation if explanation is None else explanation
+    )
+
+    db = open_admin_system_db()
+    try:
+        update_user_features(
+            db,
+            user.username,
+            can_use_ai_chat=new_ai_chat,
+            can_see_explanation=new_explanation,
+        )
+    finally:
+        db.close()
+    ui.notify(f"Features for user {user.username!r} updated.")
+    render_users_tab.refresh()
+
+
 def _toggle_roles(
     user: User, *, admin: Optional[bool], designer: Optional[bool]
 ) -> None:
+
     """Flip ``is_admin`` / ``can_use_designer`` via the DAO and refresh."""
 
     new_admin = user.is_admin if admin is None else admin
@@ -165,6 +228,9 @@ def _open_create_user_dialog(current_admin: User) -> None:
         )
         is_admin_chk = ui.checkbox("Admin", value=False)
         can_designer_chk = ui.checkbox("Designer", value=False)
+        can_ai_chat_chk = ui.checkbox("AI chat", value=True)
+        can_explanation_chk = ui.checkbox("Explanation", value=True)
+
 
         def _on_create() -> None:
             username = (username_input.value or "").strip()
@@ -184,7 +250,10 @@ def _open_create_user_dialog(current_admin: User) -> None:
                         display_name=display_name,
                         is_admin=is_admin_chk.value,
                         can_use_designer=can_designer_chk.value,
+                        can_use_ai_chat=can_ai_chat_chk.value,
+                        can_see_explanation=can_explanation_chk.value,
                     )
+
                 except Exception as exc:  # noqa: BLE001 — surface anything
                     ui.notify(
                         f"Cannot create: {exc}", type="negative"

@@ -72,9 +72,11 @@ from posrat.system.users_repo import (
     get_user,
     list_users,
     touch_last_login,
+    update_user_features,
     update_user_password,
     update_user_roles,
 )
+
 
 __all__ = [
     "ADMIN_DISPLAY_NAME_ENV",
@@ -121,7 +123,9 @@ __all__ = [
     "resolve_system_db_path",
     "revoke_exam_access",
     "touch_last_login",
+    "update_user_features",
     "update_user_password",
     "update_user_roles",
+
     "verify_password",
 ]

@@ -36,7 +36,8 @@ def _utc_now_iso() -> str:
 #: forgetting to update one of them would silently drop columns.
 _USER_SELECT_COLUMNS = (
     "username, password_hash, display_name, auth_source,"
-    " is_admin, can_use_designer, created_at, last_login_at"
+    " is_admin, can_use_designer, can_use_ai_chat, can_see_explanation,"
+    " created_at, last_login_at"
 )
 
 
@@ -50,9 +51,12 @@ def _row_to_user(row: sqlite3.Row) -> User:
         auth_source=row["auth_source"],
         is_admin=bool(row["is_admin"]),
         can_use_designer=bool(row["can_use_designer"]),
+        can_use_ai_chat=bool(row["can_use_ai_chat"]),
+        can_see_explanation=bool(row["can_see_explanation"]),
         created_at=row["created_at"],
         last_login_at=row["last_login_at"],
     )
+
 
 
 def create_user(
@@ -64,12 +68,19 @@ def create_user(
     display_name: Optional[str] = None,
     is_admin: bool = False,
     can_use_designer: bool = False,
+    can_use_ai_chat: bool = True,
+    can_see_explanation: bool = True,
     created_at: Optional[str] = None,
 ) -> User:
     """Insert a new user row and return the hydrated :class:`User`.
 
     ``created_at`` is accepted for deterministic tests; production code
     should omit it and let the DAO stamp ``datetime.utcnow()``.
+
+    ``can_use_ai_chat`` / ``can_see_explanation`` default to ``True``
+    so brand-new users inherit the "full experience" — matches the
+    migration-v5 semantics where every pre-existing row is granted
+    both flags.
 
     Raises:
         ValueError: when required cross-field invariants fail (e.g. an
@@ -98,6 +109,8 @@ def create_user(
         auth_source=auth_source,
         is_admin=is_admin,
         can_use_designer=can_use_designer,
+        can_use_ai_chat=can_use_ai_chat,
+        can_see_explanation=can_see_explanation,
         created_at=created_at or _utc_now_iso(),
         last_login_at=None,
     )
@@ -105,8 +118,10 @@ def create_user(
     with db:
         db.execute(
             "INSERT INTO users (username, password_hash, display_name,"
-            " auth_source, is_admin, can_use_designer, created_at,"
-            " last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+            " auth_source, is_admin, can_use_designer,"
+            " can_use_ai_chat, can_see_explanation,"
+            " created_at, last_login_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
             (
                 user.username,
                 user.password_hash,
@@ -114,10 +129,13 @@ def create_user(
                 user.auth_source,
                 1 if user.is_admin else 0,
                 1 if user.can_use_designer else 0,
+                1 if user.can_use_ai_chat else 0,
+                1 if user.can_see_explanation else 0,
                 user.created_at,
             ),
         )
     return user
+
 
 
 def get_user(db: sqlite3.Connection, username: str) -> Optional[User]:
@@ -179,7 +197,44 @@ def update_user_roles(
     return True
 
 
+def update_user_features(
+    db: sqlite3.Connection,
+    username: str,
+    *,
+    can_use_ai_chat: bool,
+    can_see_explanation: bool,
+) -> bool:
+    """Flip the per-user feature flags introduced in schema v5.
+
+    Kept separate from :func:`update_user_roles` so the admin UI can
+    toggle feature access without also having to remember / resubmit
+    the ``is_admin`` / ``can_use_designer`` state. Returns ``True``
+    when a row was updated, ``False`` for an unknown user (same
+    idempotent-no-op semantics as every other updater in this
+    module).
+    """
+
+    row = db.execute(
+        "SELECT username FROM users WHERE username = ?", (username,)
+    ).fetchone()
+    if row is None:
+        return False
+
+    with db:
+        db.execute(
+            "UPDATE users SET can_use_ai_chat = ?,"
+            " can_see_explanation = ? WHERE username = ?",
+            (
+                1 if can_use_ai_chat else 0,
+                1 if can_see_explanation else 0,
+                username,
+            ),
+        )
+    return True
+
+
 def update_user_password(
+
     db: sqlite3.Connection,
     username: str,
     new_password_hash: str,

@@ -37,7 +37,10 @@ from posrat.ai.context import build_question_context
 from posrat.ai.mcp_client import build_mcp_clients, parse_mcp_config
 from posrat.designer.browser import resolve_data_dir
 from posrat.models import Question
+from posrat.system.current_user import current_user_or_none
 from posrat.system.system_db import open_system_db, resolve_system_db_path
+
+
 
 
 #: Tooltip shown on both widgets so users know what the robot does.
@@ -52,6 +55,21 @@ def _load_settings() -> AISettings:
         return load_ai_settings(db)
     finally:
         db.close()
+
+
+def _ai_chat_allowed_for_current_user() -> bool:
+    """Return whether the signed-in user may see the AI chat entry points.
+
+    When the lookup fails / no user is signed in we default to
+    ``False`` — no user means no visible AI. Kept in a dedicated
+    helper so both :func:`render_ai_fab` and
+    :func:`render_ai_header_button` short-circuit identically.
+    """
+
+    user = current_user_or_none()
+    return bool(user and user.can_use_ai_chat)
+
+
 
 
 def render_ai_fab(
@@ -79,8 +97,11 @@ def render_ai_fab(
     settings = _load_settings()
     if not settings.enabled:
         return
+    if not _ai_chat_allowed_for_current_user():
+        return
 
     with ui.page_sticky(position="bottom-right", x_offset=20, y_offset=20):
+
         ui.button(
             icon="smart_toy",
             on_click=lambda _evt=None: _open_chat_dialog(
@@ -102,9 +123,12 @@ def render_ai_header_button() -> None:
     settings = _load_settings()
     if not settings.enabled:
         return
+    if not _ai_chat_allowed_for_current_user():
+        return
 
     ui.button(
         icon="smart_toy",
+
         on_click=lambda _evt=None: _open_chat_dialog(
             settings=settings,
             question=None,

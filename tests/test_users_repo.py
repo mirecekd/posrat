@@ -17,9 +17,11 @@ from posrat.system import (
     list_users,
     open_system_db,
     touch_last_login,
+    update_user_features,
     update_user_password,
     update_user_roles,
 )
+
 
 
 def _db(tmp_path: Path) -> sqlite3.Connection:
@@ -400,7 +402,102 @@ def test_count_admins_reflects_current_state(tmp_path: Path) -> None:
         db.close()
 
 
+def test_create_user_feature_flags_default_true(tmp_path: Path) -> None:
+    """Phase 14: AI chat + Explanation default to on for fresh users."""
+
+    db = _db(tmp_path)
+    try:
+        created = create_user(
+            db,
+            username="alice",
+            auth_source="internal",
+            password_hash="bcrypt$stub",
+        )
+        assert created.can_use_ai_chat is True
+        assert created.can_see_explanation is True
+        loaded = get_user(db, "alice")
+        assert loaded is not None
+        assert loaded.can_use_ai_chat is True
+        assert loaded.can_see_explanation is True
+    finally:
+        db.close()
+
+
+def test_create_user_feature_flags_explicit_false(tmp_path: Path) -> None:
+    """Admins can create locked-down accounts straight away."""
+
+    db = _db(tmp_path)
+    try:
+        created = create_user(
+            db,
+            username="locked",
+            auth_source="internal",
+            password_hash="bcrypt$stub",
+            can_use_ai_chat=False,
+            can_see_explanation=False,
+        )
+        assert created.can_use_ai_chat is False
+        loaded = get_user(db, "locked")
+        assert loaded is not None
+        assert loaded.can_use_ai_chat is False
+        assert loaded.can_see_explanation is False
+    finally:
+        db.close()
+
+
+def test_update_user_features_flips_flags(tmp_path: Path) -> None:
+    """Admin UI toggles land in DB independently of roles."""
+
+    db = _db(tmp_path)
+    try:
+        create_user(
+            db,
+            username="alice",
+            auth_source="internal",
+            password_hash="bcrypt$stub",
+            is_admin=True,
+        )
+        assert (
+            update_user_features(
+                db,
+                "alice",
+                can_use_ai_chat=False,
+                can_see_explanation=False,
+            )
+            is True
+        )
+        loaded = get_user(db, "alice")
+        assert loaded is not None
+        assert loaded.can_use_ai_chat is False
+        assert loaded.can_see_explanation is False
+        # Roles must remain untouched — feature updater is orthogonal.
+        assert loaded.is_admin is True
+    finally:
+        db.close()
+
+
+def test_update_user_features_returns_false_for_unknown(
+    tmp_path: Path,
+) -> None:
+    """Unknown user → idempotent no-op, matches the other updaters."""
+
+    db = _db(tmp_path)
+    try:
+        assert (
+            update_user_features(
+                db,
+                "ghost",
+                can_use_ai_chat=False,
+                can_see_explanation=False,
+            )
+            is False
+        )
+    finally:
+        db.close()
+
+
 def test_created_at_defaults_to_current_utc(tmp_path: Path) -> None:
+
     """Omitting ``created_at`` stamps an ISO-8601 UTC ``...Z`` timestamp."""
 
     db = _db(tmp_path)
