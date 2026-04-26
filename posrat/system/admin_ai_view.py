@@ -127,13 +127,20 @@ def _render_form(settings: AISettings) -> None:
         label="System prompt (optional)",
         value=settings.system_prompt or "",
         placeholder=DEFAULT_SYSTEM_PROMPT,
-    ).classes("w-full").props("autogrow dense")
+    ).classes("w-full").props("outlined type=textarea rows=4")
 
+    # MCP JSON textarea — outlined + fixed rows so it stays
+    # comfortably wide even when empty, and monospace font so
+    # bracket alignment is obvious when editing the blob by hand.
     mcp = ui.textarea(
         label="MCP servers (JSON, optional)",
         value=settings.mcp_config_json or "",
         placeholder=_MCP_JSON_PLACEHOLDER,
-    ).classes("w-full font-mono").props("autogrow dense")
+    ).classes("w-full").props(
+        "outlined type=textarea rows=10 "
+        "input-style=font-family:monospace"
+    )
+
 
     if settings.updated_at:
         ui.label(f"Last saved: {settings.updated_at}").classes(
