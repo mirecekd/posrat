@@ -22,6 +22,7 @@ blocks for free — both wins for an AI reply.
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Optional
 
 from nicegui import app, ui
@@ -75,6 +76,27 @@ def render_chat_dialog(
                 messages_container.clear()
                 with messages_container:
                     _render_intro(question_ctx)
+
+            # Designer-only shortcut: prepend the latest assistant
+            # reply into the selected question's Explanation/Reference
+            # field and close the dialog so the user immediately sees
+            # the updated editor preview. Gated on ``context_id``
+            # prefix + an attached question so Runner / header chats
+            # don't surface a button that would have nothing to write
+            # to. The actual DB hit lives in :func:`_insert_last_reply_into_explanation`.
+            if question is not None and context_id.startswith("designer:"):
+                ui.button(
+                    "To Explanation",
+                    icon="playlist_add",
+                    on_click=lambda _evt=None: _insert_last_reply_into_explanation(
+                        history=history,
+                        question=question,
+                        dialog=dialog,
+                    ),
+                ).props("flat dense").tooltip(
+                    "Prepend the last AI reply into the question's "
+                    "Explanation/Reference field"
+                )
 
             ui.button(
                 icon="clear_all",
@@ -271,6 +293,87 @@ async def _stream_assistant_reply(
             # "no deltas seen" fallback can grab the final text.
             history.clear()
             history.extend(trace)
+
+
+def _insert_last_reply_into_explanation(
+    *,
+    history: list[dict],
+    question: Question,
+    dialog,
+) -> None:
+    """Prepend the latest assistant reply into the question's Explanation.
+
+    Scans ``history`` for the most recent assistant message, concatenates
+    it with the current on-disk explanation (separated by a blank line),
+    and persists via
+    :func:`posrat.designer.browser.update_question_explanation_in_open_exam`.
+    On success the Designer body is refreshed so the textarea + live
+    markdown preview pick up the new value, and the chat dialog closes.
+
+    Standard Designer notify matrix: ``True`` = positive toast, ``False``
+    = warning (stale question id), ``None`` = warning ("no exam open"),
+    ``ValueError`` / ``sqlite3.DatabaseError`` = negative toast.
+    """
+
+    # Deferred imports — the Designer browser module pulls in a lot of
+    # UI wiring we don't want to drag into the AI package graph just
+    # for this one helper. Keeping them local mirrors the pattern used
+    # by :mod:`posrat.ai.widget`.
+    from posrat.designer.browser import (
+        _render_designer_body,
+        load_questions_for_open_exam,
+        update_question_explanation_in_open_exam,
+    )
+
+    trail = extract_user_and_assistant_text(history)
+    assistant_text: Optional[str] = None
+    for role, text in reversed(trail):
+        if role == "assistant" and text.strip():
+            assistant_text = text
+            break
+
+    if assistant_text is None:
+        ui.notify("No AI reply to insert yet.", type="warning")
+        return
+
+    # Re-read the fresh explanation from disk so we don't clobber
+    # edits made in the editor between opening the dialog and clicking
+    # "To Explanation". ``question`` passed in by the caller is a
+    # snapshot captured when the dialog opened.
+    fresh_questions = load_questions_for_open_exam()
+    existing: Optional[str] = question.explanation
+    if fresh_questions:
+        for q in fresh_questions:
+            if q.id == question.id:
+                existing = q.explanation
+                break
+
+    if existing and existing.strip():
+        new_explanation = f"{assistant_text}\n\n{existing}"
+    else:
+        new_explanation = assistant_text
+
+    try:
+        updated = update_question_explanation_in_open_exam(
+            question.id, new_explanation
+        )
+    except (ValueError, sqlite3.DatabaseError) as exc:
+        ui.notify(f"Cannot save explanation: {exc}", type="negative")
+        return
+
+    if updated is None:
+        ui.notify("No exam is open.", type="warning")
+        return
+    if not updated:
+        ui.notify(
+            f"Question {question.id} no longer exists.", type="warning"
+        )
+        _render_designer_body.refresh()
+        return
+
+    ui.notify("AI reply inserted into Explanation.", type="positive")
+    _render_designer_body.refresh()
+    dialog.close()
 
 
 __all__ = ["render_chat_dialog"]
