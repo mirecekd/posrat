@@ -459,9 +459,10 @@ def _render_choices_section(question: Question) -> None:
 def _render_explanation_section(question: Question) -> None:
     """Render the 'Explanation/Reference' section with an autosaving textarea.
 
-    The AI chat panel (Phase 6) will live underneath this section; for
-    now we render only a muted divider comment so the structure is
-    visible in the UI even before the chat lands.
+    The AI assistant lives as a floating FAB (``render_ai_fab``) at
+    the page corner — its "To Explanation" button prepends the last
+    reply straight into this field, so there is no inline chat panel
+    here anymore.
     """
 
     with ui.card().classes("w-full q-mb-sm").props("bordered"):
@@ -491,13 +492,6 @@ def _render_explanation_section(question: Question) -> None:
             "q-px-sm q-pb-sm"
         )
         preview.bind_content_from(expl_area, "value")
-
-        # Placeholder for Phase 6 AI chat panel — rendered as a muted
-        # caption so users can see where the chat will live.
-        ui.separator().classes("q-my-sm")
-        ui.label("AI chat (Phase 6) — not yet implemented.").classes(
-            "text-caption text-grey q-pa-xs"
-        )
 
 
 
