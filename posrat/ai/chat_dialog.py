@@ -9,11 +9,19 @@ The dialog is intentionally a :class:`ui.dialog` (not a ``ui.drawer``)
 so it works uniformly on every route — the Designer and Runner
 already use their own drawers for navigation, and stacking drawers
 would fight for the same screen edge.
+
+**Streaming implementation note.** We render each message as a
+:class:`ui.card` + :class:`ui.markdown` pair instead of
+:class:`ui.chat_message`. The latter's ``text`` attribute does not
+re-render on assignment in NiceGUI 3 (it's baked into the slot at
+construction time), which meant the assistant's streamed tokens
+never surfaced to the user. ``ui.markdown.content`` round-trips
+cleanly on mutation and also renders backticks / bold / code
+blocks for free — both wins for an AI reply.
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import Optional
 
 from nicegui import app, ui
@@ -49,9 +57,9 @@ def render_chat_dialog(
     question_ctx = build_question_context(question) if question else ""
 
     with ui.dialog() as dialog, ui.card().classes(
-        "w-full max-w-2xl no-wrap"
-    ).style("width: 640px; max-height: 80vh;"):
-        # Header
+        "no-wrap column"
+    ).style("width: 720px; max-width: 95vw; max-height: 85vh;"):
+        # --- Header row -----------------------------------------------
         with ui.row().classes(
             "items-center q-pa-sm q-gutter-sm bg-grey-2 w-full"
         ):
@@ -77,11 +85,10 @@ def render_chat_dialog(
                 on_click=dialog.close,
             ).props("flat dense")
 
-        # Messages area — scrollable; bubbles render into
-        # ``messages_container`` so we can refresh / append live.
+        # --- Scrollable message area ----------------------------------
         messages_container = ui.scroll_area().classes(
             "col-grow q-pa-sm"
-        ).style("height: 50vh;")
+        ).style("height: 55vh; min-height: 300px;")
 
         with messages_container:
             if history:
@@ -91,10 +98,15 @@ def render_chat_dialog(
             else:
                 _render_intro(question_ctx)
 
-        # Prompt row.
+        # --- Prompt row -----------------------------------------------
         prompt = ui.textarea(
-            placeholder="Ask about this question, AWS services, best practices…",
-        ).classes("w-full").props("autogrow dense outlined rows=2")
+            placeholder=(
+                "Ask about this question, AWS services, best practices… "
+                "(Ctrl/Cmd + Enter to send)"
+            ),
+        ).classes("w-full q-px-sm").props(
+            "outlined type=textarea rows=3 autogrow=false"
+        )
 
         async def _on_send() -> None:
             text = (prompt.value or "").strip()
@@ -102,17 +114,15 @@ def render_chat_dialog(
                 return
             prompt.value = ""
 
-            # Append the user bubble immediately so the UI feels
-            # responsive before the first streamed token arrives.
+            # User bubble — render immediately so the UI feels
+            # responsive before the first streamed token.
             with messages_container:
                 _render_bubble("user", text)
 
-            # Streaming assistant bubble — we mutate ``content`` on
-            # each token delta to rebuild markdown in place.
+            # Assistant bubble placeholder — we mutate the
+            # ``ui.markdown.content`` attribute on each token delta.
             with messages_container:
-                assistant_label = ui.chat_message(
-                    text="…", name="Assistant", sent=False,
-                ).props("bg-color=grey-3")
+                assistant_md = _render_bubble("assistant", "_Thinking…_")
 
             assistant_buffer = {"text": ""}
             try:
@@ -124,25 +134,36 @@ def render_chat_dialog(
                     storage=storage,
                     context_id=context_id,
                     on_delta=lambda delta: _append_delta(
-                        assistant_label, assistant_buffer, delta
+                        assistant_md, assistant_buffer, delta
                     ),
                 )
             except Exception as exc:  # noqa: BLE001 — surface everything
                 ui.notify(f"AI error: {exc}", type="negative")
-                assistant_label.text = f"⚠ Error: {exc}"
+                assistant_md.content = f"⚠ **Error:** {exc}"
+                return
 
-        with ui.row().classes("items-end q-pa-sm w-full q-gutter-sm"):
+            # If the stream produced zero deltas (e.g. tool-only
+            # turn), show at least the persisted assistant text so
+            # the bubble doesn't stay stuck on "Thinking…".
+            if not assistant_buffer["text"]:
+                trail = extract_user_and_assistant_text(history)
+                if trail and trail[-1][0] == "assistant":
+                    assistant_md.content = trail[-1][1]
+                else:
+                    assistant_md.content = "_(no reply)_"
+
+        with ui.row().classes("items-center q-pa-sm w-full q-gutter-sm"):
             ui.space()
             ui.button(
                 "Send",
                 icon="send",
-                on_click=lambda _evt=None: asyncio.create_task(_on_send()),
+                on_click=_on_send,
             ).props("color=primary")
 
-        prompt.on(
-            "keydown.enter",
-            lambda _evt=None: asyncio.create_task(_on_send()),
-        )
+        # Ctrl/Cmd + Enter sends. Plain Enter is left as a newline
+        # so multi-paragraph questions work naturally.
+        prompt.on("keydown.ctrl.enter", _on_send)
+        prompt.on("keydown.meta.enter", _on_send)
 
     dialog.open()
 
@@ -168,24 +189,36 @@ def _render_bubbles(pairs: list[tuple[str, str]]) -> None:
         _render_bubble(role, text)
 
 
-def _render_bubble(role: str, text: str) -> None:
-    """Render a single chat bubble."""
+def _render_bubble(role: str, text: str):
+    """Render a single chat bubble and return its markdown element.
 
-    if role == "user":
-        ui.chat_message(
-            text=text, name="You", sent=True,
-        ).props("bg-color=primary text-color=white")
-    else:
-        ui.chat_message(
-            text=text, name="Assistant", sent=False,
-        ).props("bg-color=grey-3")
+    Uses :class:`ui.card` wrapper plus :class:`ui.markdown` so we can
+    mutate ``content`` later for streaming. Returns the markdown
+    element so the caller can update it as tokens arrive.
+    """
+
+    bg = "bg-primary" if role == "user" else "bg-grey-3"
+    text_class = "text-white" if role == "user" else ""
+    align = "self-end" if role == "user" else "self-start"
+
+    with ui.card().classes(
+        f"{bg} {text_class} {align} q-pa-sm q-mb-sm"
+    ).style("max-width: 85%;"):
+        ui.label("You" if role == "user" else "Assistant").classes(
+            "text-caption text-weight-medium"
+        )
+        md = ui.markdown(content=text).classes(
+            "q-mt-xs"
+            + (" text-white" if role == "user" else "")
+        )
+    return md
 
 
-def _append_delta(label, buffer: dict, delta: str) -> None:
+def _append_delta(md, buffer: dict, delta: str) -> None:
     """Append a streamed token delta to the assistant bubble."""
 
     buffer["text"] = buffer["text"] + delta
-    label.text = buffer["text"]
+    md.content = buffer["text"]
 
 
 async def _stream_assistant_reply(
@@ -210,13 +243,19 @@ async def _stream_assistant_reply(
         mcp_clients=mcp_clients,
         prior_messages=history,
     ):
-        if isinstance(event, dict):
-            delta = event.get("data")
-            if isinstance(delta, str):
-                on_delta(delta)
-            trace = event.get("complete_messages")
-            if isinstance(trace, list):
-                save_history(storage, context_id, trace)
+        if not isinstance(event, dict):
+            continue
+        delta = event.get("data")
+        if isinstance(delta, str):
+            on_delta(delta)
+            continue
+        trace = event.get("complete_messages")
+        if isinstance(trace, list):
+            save_history(storage, context_id, trace)
+            # Also feed the caller's live reference so the
+            # "no deltas seen" fallback can grab the final text.
+            history.clear()
+            history.extend(trace)
 
 
 __all__ = ["render_chat_dialog"]
