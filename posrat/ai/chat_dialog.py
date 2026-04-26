@@ -207,11 +207,26 @@ def _render_bubble(role: str, text: str):
         ui.label("You" if role == "user" else "Assistant").classes(
             "text-caption text-weight-medium"
         )
-        md = ui.markdown(content=text).classes(
+        # ``extras`` enables GitHub-flavoured markdown bits the model
+        # likes to emit (tables, fenced code blocks, strikethrough,
+        # task lists). Without them ``ui.markdown`` falls back to the
+        # plain markdown2 parser which renders tables as raw pipes.
+        md = ui.markdown(
+            content=text,
+            extras=[
+                "tables",
+                "fenced-code-blocks",
+                "strike",
+                "task_list",
+                "cuddled-lists",
+                "break-on-newline",
+            ],
+        ).classes(
             "q-mt-xs"
             + (" text-white" if role == "user" else "")
         )
     return md
+
 
 
 def _append_delta(md, buffer: dict, delta: str) -> None:

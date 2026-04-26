@@ -328,17 +328,17 @@ def render_explorer_panel() -> None:
         )
         return
 
-    ui.label(str(summary.get("name"))).classes(
-        "text-caption text-grey ellipsis"
-    ).tooltip(str(summary.get("path")))
-
+    # The exam name already lives in the big header above the 3-panel
+    # layout (with the question count badge), so we don't repeat it
+    # inside the Explorer — it just stole a whole row for nothing.
+    #
     # Exam-level metadata (default question count, time limit,
     # passing/target score) lives at the exam level — rendered as a
-    # collapsed disclosure right below the exam name so the per-
-    # question Properties panel stays focused on the selected row's
-    # fields and the user doesn't have to scroll past four inputs for
-    # every question pick.
+    # collapsed disclosure so the per-question Properties panel stays
+    # focused on the selected row's fields and the user doesn't have
+    # to scroll past four inputs for every question pick.
     render_exam_settings_section()
+
 
     questions = load_questions_for_open_exam()
     selected_id = ensure_selection_valid(questions)
