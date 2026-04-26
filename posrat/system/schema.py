@@ -111,4 +111,36 @@ MIGRATIONS: dict[int, str] = {
     CREATE INDEX idx_exam_access_requests_status
         ON exam_access_requests (status);
     """,
+    # Phase 11 step 1 — AI chat settings (singleton row).
+    #
+    # The AI chat panel (floating robot bottom-right + header button) is
+    # gated by a single globally-configured LLM provider. POSRAT targets
+    # AWS Bedrock via Strands Agents; credentials come from the
+    # process-wide boto3 default chain (``AWS_PROFILE`` / env vars /
+    # IMDS / SSO cache) so this table deliberately stores **no secrets**
+    # — only the chooseable parameters (model id, region, system prompt,
+    # MCP config).
+    #
+    # Singleton pattern: a ``CHECK(id = 1)`` constraint keeps the table
+    # at most one row wide. ``INSERT OR REPLACE INTO ai_settings (id,
+    # ...) VALUES (1, ...)`` in the DAO upserts it; the admin panel
+    # renders the current row or a blank form if it's missing.
+    #
+    # ``mcp_config_json`` stores the Claude Desktop-compatible JSON
+    # (``{"mcpServers": {...}}``) as a TEXT blob. Validation happens
+    # in the application layer on save; the column is just a dumb
+    # string so operators can paste snippets from aws-knowledge-mcp
+    # docs verbatim.
+    4: """
+    CREATE TABLE ai_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+        model_id TEXT NOT NULL,
+        region TEXT NOT NULL,
+        system_prompt TEXT,
+        mcp_config_json TEXT,
+        updated_at TEXT NOT NULL
+    );
+    """,
 }
+

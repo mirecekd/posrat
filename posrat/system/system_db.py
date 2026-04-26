@@ -69,8 +69,10 @@ _SYSTEM_DB_TABLES = frozenset(
         "users",
         "user_exam_access",
         "exam_access_requests",
+        "ai_settings",
     }
 )
+
 
 
 def apply_system_migrations(db: sqlite3.Connection) -> int:
