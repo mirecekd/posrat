@@ -233,5 +233,30 @@ def render_question_view(stash: dict) -> None:
     else:
         render_next_area(question, stash, payload_holder)
 
+    # Floating AI chat FAB — Training mode only. In Exam mode we do
+    # not render the assistant so candidates cannot turn the practice
+    # tool into a cheat during timed runs.
+    if stash.get("mode") == "training":
+        _render_runner_ai_fab(question, stash)
+
+
+def _render_runner_ai_fab(question: Question, stash: dict) -> None:
+    """Render the AI FAB scoped to the current session + question.
+
+    Kept in a tiny helper so the gating logic and context-id shape
+    live right next to the call site. The context provider re-reads
+    the question via ``_load_session_question`` every click so edits
+    made in the Designer mid-session are reflected immediately.
+    """
+
+    from posrat.ai import render_ai_fab
+
+    session_id = str(stash.get("session_id") or "no-session")
+    render_ai_fab(
+        context_provider=lambda q=question: q,
+        context_id=f"runner:{session_id}:{question.id}",
+    )
+
 
 __all__ = ["render_question_view"]
+

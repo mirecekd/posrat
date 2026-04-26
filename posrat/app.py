@@ -27,9 +27,11 @@ from typing import Optional
 from nicegui import app, ui
 
 from posrat import __version__
+from posrat.ai import render_ai_header_button
 from posrat.designer import render_designer, resolve_assets_dir, resolve_data_dir
 from posrat.runner import render_runner as _render_runner_body_from_runner
 from posrat.system import bootstrap_admin_from_env
+
 from posrat.system.admin_view import ADMIN_ROUTE, render_admin
 from posrat.system.login_view import (
     LOGIN_ROUTE,
@@ -191,9 +193,15 @@ def _render_header(
             ui.switch("Dark mode").bind_value(dark, "value").props(
                 "color=white"
             )
+            # AI chat header button (no-op when admin has not enabled
+            # it). Rendered as a small round icon so it blends with
+            # the other header chips; same smart_toy icon as the
+            # floating FAB so users recognise it across the app.
+            render_ai_header_button()
             ui.button("About", on_click=_show_about_dialog).props(
                 "flat color=white"
             )
+
 
 
 def _render_home() -> None:

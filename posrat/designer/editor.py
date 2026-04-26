@@ -676,7 +676,17 @@ def render_editor_panel() -> None:
     stacks the three per-field sections (Question / Choices /
     Explanation + AI chat scaffold) plus a small image toolbar row on
     top so attachments stay one click away.
+
+    The floating AI chat FAB is rendered at the end with a context
+    provider that re-reads the currently selected question at click
+    time — so switching questions updates the assistant context
+    without re-rendering the FAB itself.
     """
+
+    from nicegui import app
+
+    from posrat.ai import render_ai_fab
+    from posrat.designer.browser import OPEN_EXAM_STORAGE_KEY
 
     question = get_selected_question()
     if question is None:
@@ -693,6 +703,19 @@ def render_editor_panel() -> None:
     _render_choices_section(question)
     _render_explanation_section(question)
     _render_asset_gallery()
+
+    # Floating AI chat FAB — lives at the page corner, not inside any
+    # section, so it stays reachable regardless of scroll position.
+    # ``context_id`` embeds the exam id + question id so the
+    # conversation scoped to each question is independent.
+    summary = app.storage.user.get(OPEN_EXAM_STORAGE_KEY) or {}
+    exam_id = str(summary.get("id") or "no-exam")
+    render_ai_fab(
+        context_provider=get_selected_question,
+        context_id=f"designer:{exam_id}:{question.id}",
+    )
+
+
 
 
 

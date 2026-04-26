@@ -14,9 +14,37 @@ but the format is generic).
 
 - **Designer** — exam editor (single/multi-choice, hotspot, images, explanations).
 - **Runner** — run exams in training or exam mode.
+- **AI chat assistant** — optional Bedrock-backed study tutor via
+  [Strands Agents](https://strandsagents.com/) with MCP server
+  integration (defaults to
+  [aws-knowledge-mcp](https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server/)).
+  Configured in `/admin` → *AI chat* tab. Surfaces as a floating
+  robot bottom-right in the Designer editor and in the Runner
+  Training mode (never in Exam mode), plus a small robot icon in
+  the header for generic AWS chat.
 
 Each exam is stored as a single SQLite file; a portable `.posrat` bundle
 (zip with `exam.json` + `assets/`) is used for import/export.
+
+### AI chat — AWS credentials
+
+The assistant uses the **default boto3 credential chain**
+(`AWS_PROFILE`, environment variables, IMDS, SSO cache). No keys are
+stored in POSRAT. Set `AWS_PROFILE=<your-profile>` before launching
+`python -m posrat` (or when running the container), enable the chat in
+`/admin` → *AI chat*, pick a Bedrock model id and region, and
+optionally paste a Claude Desktop-shaped MCP JSON:
+
+```json
+{
+  "mcpServers": {
+    "aws-knowledge": {
+      "url": "https://knowledge-mcp.global.api.aws"
+    }
+  }
+}
+```
+
 
 ## Run locally
 
