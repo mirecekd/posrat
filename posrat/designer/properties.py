@@ -316,6 +316,47 @@ def _coerce_optional_int(raw: object) -> int | None:
         return None
 
 
+#: Mapping of Properties panel metadata labels onto the metadata-dict
+#: keys stored under ``app.storage.user[OPEN_EXAM_STORAGE_KEY]["metadata"]``.
+#: Used by :func:`_handle_exam_metadata_change` so a successful DB write
+#: also patches the cached summary — without that, the panel would keep
+#: rendering the stale pre-edit value until the user re-opens the exam.
+_EXAM_METADATA_STORAGE_KEYS: dict[str, str] = {
+    "Default # of questions": "default_question_count",
+    "Time limit": "time_limit_minutes",
+    "Passing score": "passing_score",
+    "Target score": "target_score",
+}
+
+
+def _sync_open_exam_metadata(label: str, new_value: int | None) -> None:
+    """Patch the cached open-exam summary after a successful metadata save.
+
+    The summary dict stashed in :data:`app.storage.user` under
+    :data:`OPEN_EXAM_STORAGE_KEY` is what the Properties panel reads
+    on the next render. Without this in-place patch the panel would
+    continue to show the pre-edit value until the exam is re-opened
+    from disk, because nothing else rebuilds the summary on an
+    exam-metadata write.
+    """
+
+    storage_key = _EXAM_METADATA_STORAGE_KEYS.get(label)
+    if storage_key is None:
+        return
+
+    summary = app.storage.user.get(OPEN_EXAM_STORAGE_KEY)
+    if not summary:
+        return
+
+    metadata = summary.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+        summary["metadata"] = metadata
+
+    metadata[storage_key] = new_value
+    app.storage.user[OPEN_EXAM_STORAGE_KEY] = summary
+
+
 def _handle_exam_metadata_change(
     label: str,
     handler,
@@ -363,6 +404,10 @@ def _handle_exam_metadata_change(
         )
         _render_designer_body.refresh()
         return
+
+    # Keep the cached summary in sync so the next render shows the
+    # freshly saved value instead of the pre-edit one.
+    _sync_open_exam_metadata(label, new_value)
 
     display = "(none)" if new_value is None else str(new_value)
     ui.notify(f"{label} saved ({display}).")
@@ -417,22 +462,25 @@ def _render_exam_metadata_row(
             ui.label(suffix).classes("text-caption text-grey")
 
 
-def _render_exam_settings_section() -> None:
-    """Render the "Exam settings" collapsible group of runner metadata.
+def render_exam_settings_section() -> None:
+    """Render the "Exam settings" collapsed disclosure of exam metadata.
 
-    Reads the opened-exam summary from :data:`app.storage.user` so we
-    can show the exam name in the expansion caption. Metadata values
-    come from ``app.storage.user[OPEN_EXAM_STORAGE_KEY]["metadata"]``
-    which is populated by ``_handle_open_click`` in
-    :mod:`posrat.designer.browser`; when that key is missing (older
-    summaries from before the 7A refactor, or a summary that has been
-    invalidated) we fall through and render "Select a question…" without
-    the exam settings header so nothing crashes.
+    Rendered inside the Exam Explorer panel (right under the exam
+    name) so the four Runner-facing exam metadata fields live at
+    the exam level, visually separated from the per-question
+    Properties panel below. Kept as a :func:`ui.expansion` (default
+    collapsed) because these fields are edited rarely — once per
+    exam, not per question — so folding them away keeps the
+    question list and its search input close to the top of the
+    panel without extra scrolling.
 
-    The whole section is a :func:`ui.expansion` (default collapsed) so
-    the per-question properties below stay visible at first glance —
-    the Runner config fields are authored once per exam, not per
-    question, so hiding them behind a disclosure is appropriate.
+    Reads the opened-exam summary from :data:`app.storage.user`;
+    metadata values come from
+    ``app.storage.user[OPEN_EXAM_STORAGE_KEY]["metadata"]`` which is
+    populated by ``_handle_open_click`` / ``_build_open_exam_summary``
+    in :mod:`posrat.designer.browser`. When no exam is open the
+    function returns early so the Explorer renders its "Open an
+    exam…" placeholder instead.
     """
 
     summary = app.storage.user.get(OPEN_EXAM_STORAGE_KEY)
@@ -490,27 +538,26 @@ def _render_exam_settings_section() -> None:
 
 
 def render_properties_panel() -> None:
-    """Render the Properties panel for the selected question.
+    """Render the per-question Properties panel (bottom-left of the 3-panel layout).
 
-    Empty-state placeholder when no question is selected (happens when
-    no exam is open or the exam has zero questions). Otherwise renders
-    Answer Type dropdown + editable Complexity / Section rows + read-
-    only scaffold rows. The Visual CertExam mockup shows additional
-    rows (Exhibits, Allow Shuffle Choices) that we render as read-only
-    scaffolds for now — their full edit flow lands with Phase 9.
+    Since the exam-level metadata moved into the Exam Explorer
+    panel (``render_exam_settings_section`` above), this panel now
+    hosts only the per-question grid — Answer Type, Complexity,
+    Section, Exhibits, Shuffle flag. That way switching between
+    questions doesn't push the per-question fields below the fold,
+    and the four exam metadata inputs no longer steal vertical room
+    from the grid they share the panel with.
 
-    Since Phase 7A.5 the panel is split in two vertically: at the top
-    a collapsible "Exam settings" group exposes the four Runner-facing
-    exam metadata fields (default question count, timer, passing /
-    target score); below that, the per-question grid keeps its
-    existing shape.
+    Heavy edits (choice text, explanation, image upload, hotspot
+    payload) still live in their existing per-field modal dialogs —
+    this panel just exposes quick-access rows.
     """
 
-    ui.label("Properties").classes("text-subtitle2 text-weight-bold")
-
-    # Exam-level settings are always rendered (when an exam is open)
-    # so the user can edit them even before selecting a question.
-    _render_exam_settings_section()
+    with ui.row().classes("items-center q-gutter-xs no-wrap w-full"):
+        ui.icon("help_outline").classes("text-grey")
+        ui.label("Question properties").classes(
+            "text-subtitle2 text-weight-bold"
+        )
 
     question = get_selected_question()
     if question is None:
@@ -649,5 +696,6 @@ def render_properties_panel() -> None:
 __all__ = [
     "COMPLEXITY_UNSET_LABEL",
     "PROPERTIES_LABEL_WIDTH_PX",
+    "render_exam_settings_section",
     "render_properties_panel",
 ]

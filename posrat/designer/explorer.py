@@ -24,6 +24,7 @@ from posrat.designer.browser import (
     MOVE_UP,
     OPEN_EXAM_STORAGE_KEY,
     SEARCH_QUERY_STORAGE_KEY,
+    _build_open_exam_summary,
     _handle_add_question_click,
     _handle_delete_question_click,
     _handle_move_question_click,
@@ -38,6 +39,7 @@ from posrat.designer.browser import (
     resolve_data_dir,
 )
 from posrat.designer.import_dialog import _show_bulk_import_dialog
+from posrat.designer.properties import render_exam_settings_section
 from posrat.designer.state import (
     ensure_selection_valid,
     get_selected_question_id,
@@ -132,13 +134,13 @@ def _handle_open_file_click(path: Path) -> None:
         ui.notify(f"Cannot open {path.name}: {exc}", type="negative")
         return
 
-    app.storage.user[OPEN_EXAM_STORAGE_KEY] = {
-        "path": str(path.resolve()),
-        "id": exam.id,
-        "name": exam.name,
-        "description": exam.description,
-        "question_count": len(exam.questions),
-    }
+    # Reuse the canonical summary builder so the ``metadata`` dict
+    # (default_question_count / time_limit_minutes / passing_score /
+    # target_score) lands in user storage. Without it the Properties
+    # panel's Exam Settings section would read an empty dict and
+    # render all four inputs as blank placeholders even when the
+    # values are set on disk.
+    app.storage.user[OPEN_EXAM_STORAGE_KEY] = _build_open_exam_summary(path, exam)
     # Clear stale selection (might refer to a question from the
     # previous exam); ``ensure_selection_valid`` below will seed the
     # first row of the newly opened exam on the next render.
@@ -329,6 +331,14 @@ def render_explorer_panel() -> None:
     ui.label(str(summary.get("name"))).classes(
         "text-caption text-grey ellipsis"
     ).tooltip(str(summary.get("path")))
+
+    # Exam-level metadata (default question count, time limit,
+    # passing/target score) lives at the exam level — rendered as a
+    # collapsed disclosure right below the exam name so the per-
+    # question Properties panel stays focused on the selected row's
+    # fields and the user doesn't have to scroll past four inputs for
+    # every question pick.
+    render_exam_settings_section()
 
     questions = load_questions_for_open_exam()
     selected_id = ensure_selection_valid(questions)
