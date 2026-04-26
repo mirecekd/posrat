@@ -23,8 +23,27 @@ services:
       # as documentation for operators.
       POSRAT_DATA_DIR: "/data"
       POSRAT_NO_BROWSER: "1"
+
+      # ----- AI chat (optional) -------------------------------------------
+      # The AI chat assistant (admin → "AI chat" tab) uses the boto3
+      # default credential chain, so any of the following work:
+      #   * AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ SESSION_TOKEN)
+      #   * AWS_PROFILE pointing at a mounted ~/.aws/ directory (see
+      #     the commented-out volume below)
+      #   * IMDS when the container runs on EC2 with an IAM role
+      # AWS_DEFAULT_REGION is used only when the admin panel hasn't
+      # saved one yet (defaults to eu-west-1 anyway).
+      # AWS_ACCESS_KEY_ID: "AKIA..."
+      # AWS_SECRET_ACCESS_KEY: "..."
+      # AWS_SESSION_TOKEN: "..."   # only for temporary creds / SSO
+      # AWS_DEFAULT_REGION: "eu-west-1"
+      # AWS_PROFILE: "default"     # alternative: mount ~/.aws/ below
     volumes:
       - posrat-data:/data
+      # Alternative to access keys: mount the host's ~/.aws/ so the
+      # container reuses your local profile / SSO cache.
+      # - ~/.aws:/home/posrat/.aws:ro
+
 
 volumes:
   posrat-data:

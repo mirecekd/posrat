@@ -69,6 +69,28 @@ docker build -t posrat .
 docker run -d -p 8080:8080 -v posrat-data:/data posrat
 ```
 
+To enable the AI chat in the container, pass AWS credentials via any
+standard boto3 mechanism:
+
+```bash
+# Option A — inline access keys
+docker run -d -p 8080:8080 -v posrat-data:/data \
+    -e AWS_ACCESS_KEY_ID=AKIA... \
+    -e AWS_SECRET_ACCESS_KEY=... \
+    -e AWS_DEFAULT_REGION=eu-west-1 \
+    posrat
+
+# Option B — mount the host's ~/.aws for profile/SSO reuse
+docker run -d -p 8080:8080 -v posrat-data:/data \
+    -v ~/.aws:/home/posrat/.aws:ro \
+    -e AWS_PROFILE=my-profile \
+    posrat
+```
+
+Then enable the chat in `/admin` → *AI chat* tab (see
+[AI chat — AWS credentials](#ai-chat--aws-credentials) above).
+
+
 Data is persisted in the `/data` volume. The first admin account can be
 bootstrapped via `POSRAT_ADMIN_USERNAME` / `POSRAT_ADMIN_PASSWORD`, or
 created later:
