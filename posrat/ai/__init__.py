@@ -26,12 +26,18 @@ from posrat.ai.config import (
     load_ai_settings,
     save_ai_settings,
 )
+from posrat.ai.context import build_question_context
+from posrat.ai.widget import render_ai_fab, render_ai_header_button
 
 __all__ = [
     "AISettings",
     "DEFAULT_MODEL_ID",
     "DEFAULT_REGION",
     "DEFAULT_SYSTEM_PROMPT",
+    "build_question_context",
     "load_ai_settings",
+    "render_ai_fab",
+    "render_ai_header_button",
     "save_ai_settings",
 ]
+
