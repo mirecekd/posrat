@@ -34,10 +34,11 @@ from posrat.ai.chat_state import (
     load_history,
     save_history,
 )
-from posrat.ai.config import AISettings
+from posrat.ai.config import DEFAULT_ENRICH_PROMPT, AISettings
 from posrat.ai.context import build_question_context
 from posrat.ai.mcp_client import build_mcp_clients, parse_mcp_config
 from posrat.models import Question
+
 
 
 def render_chat_dialog(
@@ -85,6 +86,18 @@ def render_chat_dialog(
             # don't surface a button that would have nothing to write
             # to. The actual DB hit lives in :func:`_insert_last_reply_into_explanation`.
             if question is not None and context_id.startswith("designer:"):
+                # One-click flow: fire the canned enrichment prompt,
+                # stream the reply, then prepend it into Explanation
+                # as soon as the stream finishes. Saves three clicks
+                # (type prompt, send, "To Explanation") down to one.
+                ui.button(
+                    "Auto-enrich",
+                    icon="auto_fix_high",
+                    on_click=lambda _evt=None: _on_auto_enrich(),
+                ).props("flat dense color=primary").tooltip(
+                    "Send the canned enrichment prompt and automatically "
+                    "save the reply into Explanation/Reference"
+                )
                 ui.button(
                     "To Explanation",
                     icon="playlist_add",
@@ -99,6 +112,7 @@ def render_chat_dialog(
                 )
 
             ui.button(
+
                 icon="clear_all",
                 on_click=_on_clear,
             ).props("flat dense").tooltip("Clear chat history")
@@ -130,16 +144,20 @@ def render_chat_dialog(
             "outlined type=textarea rows=3 autogrow=false"
         )
 
-        async def _on_send() -> None:
-            text = (prompt.value or "").strip()
-            if not text:
-                return
-            prompt.value = ""
+        async def _run_chat_turn(user_text: str) -> bool:
+            """Render user + assistant bubbles and stream the reply.
+
+            Returns ``True`` on successful completion, ``False`` when
+            the stream raised. Shared by :func:`_on_send` (manual
+            prompt) and :func:`_on_auto_enrich` (canned prompt) so
+            both entry points use identical UI rendering + history
+            persistence without duplicating 40 lines of stream setup.
+            """
 
             # User bubble — render immediately so the UI feels
             # responsive before the first streamed token.
             with messages_container:
-                _render_bubble("user", text)
+                _render_bubble("user", user_text)
 
             # Assistant bubble placeholder — we mutate the
             # ``ui.markdown.content`` attribute on each token delta.
@@ -151,7 +169,7 @@ def render_chat_dialog(
                 await _stream_assistant_reply(
                     settings=settings,
                     question_ctx=question_ctx,
-                    user_prompt=text,
+                    user_prompt=user_text,
                     history=history,
                     storage=storage,
                     context_id=context_id,
@@ -162,7 +180,7 @@ def render_chat_dialog(
             except Exception as exc:  # noqa: BLE001 — surface everything
                 ui.notify(f"AI error: {exc}", type="negative")
                 assistant_md.content = f"⚠ **Error:** {exc}"
-                return
+                return False
 
             # If the stream produced zero deltas (e.g. tool-only
             # turn), show at least the persisted assistant text so
@@ -173,6 +191,41 @@ def render_chat_dialog(
                     assistant_md.content = trail[-1][1]
                 else:
                     assistant_md.content = "_(no reply)_"
+            return True
+
+        async def _on_send() -> None:
+            text = (prompt.value or "").strip()
+            if not text:
+                return
+            prompt.value = ""
+            await _run_chat_turn(text)
+
+        async def _on_auto_enrich() -> None:
+            """Fire the canned enrichment prompt + auto-commit the reply.
+
+            Feeds :data:`DEFAULT_ENRICH_PROMPT` through the same
+            streaming pipeline as a manual send, then — on success —
+            prepends the fresh assistant reply into the question's
+            Explanation/Reference field via
+            :func:`_insert_last_reply_into_explanation` (which closes
+            the dialog and refreshes the Designer body).
+            """
+
+            if question is None:
+                # Defensive — the button is only rendered for
+                # Designer + attached question, but the outer closure
+                # captures ``question`` as ``Optional`` so narrow
+                # locally for the type checker and for safety.
+                return
+            succeeded = await _run_chat_turn(DEFAULT_ENRICH_PROMPT)
+            if not succeeded:
+                return
+            _insert_last_reply_into_explanation(
+                history=history,
+                question=question,
+                dialog=dialog,
+            )
+
 
         with ui.row().classes("items-center q-pa-sm w-full q-gutter-sm"):
             ui.space()

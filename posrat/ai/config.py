@@ -43,6 +43,19 @@ DEFAULT_SYSTEM_PROMPT: str = (
     "is needed. Never pretend to know — if unsure, say so."
 )
 
+#: Prompt sent by the Designer-only "Auto-enrich" chat button. The
+#: resulting assistant reply is automatically prepended into the
+#: question's Explanation/Reference field once the stream finishes —
+#: keep it focused on "verify correct answer + cite AWS docs" because
+#: candidates will read the output verbatim during review mode.
+DEFAULT_ENRICH_PROMPT: str = (
+    "Check the question carefully, identify the correct answer(s), "
+    "and justify it using AWS documentation via the MCP server. "
+    "Cite the specific AWS docs URLs you used. Be concise — this "
+    "text will be stored as the question's Explanation/Reference."
+)
+
+
 
 @dataclass(frozen=True)
 class AISettings:
@@ -201,9 +214,11 @@ def save_ai_settings(
 
 __all__ = [
     "AISettings",
+    "DEFAULT_ENRICH_PROMPT",
     "DEFAULT_MODEL_ID",
     "DEFAULT_REGION",
     "DEFAULT_SYSTEM_PROMPT",
     "load_ai_settings",
     "save_ai_settings",
 ]
+
