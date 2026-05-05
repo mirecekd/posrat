@@ -45,7 +45,6 @@ from posrat.designer.browser import (
     OPEN_EXAM_STORAGE_KEY,
     QUESTION_LIST_TEXT_PREVIEW,
     SAVED_LABEL_TEXT,
-    SEARCH_QUERY_STORAGE_KEY,
     add_blank_question_to_file,
     add_blank_question_to_open_exam,
     attach_image_to_question_in_file,
@@ -60,7 +59,6 @@ from posrat.designer.browser import (
     delete_question_from_open_exam,
     export_exam_to_json_in_file,
     export_open_exam_to_json,
-    filter_questions,
     format_question_label,
 
     is_open_exam_dirty,
@@ -124,7 +122,6 @@ __all__ = [
     "OPEN_EXAM_STORAGE_KEY",
     "QUESTION_LIST_TEXT_PREVIEW",
     "SAVED_LABEL_TEXT",
-    "SEARCH_QUERY_STORAGE_KEY",
     "add_blank_question_to_file",
     "add_blank_question_to_open_exam",
     "attach_image_to_question_in_file",
@@ -138,7 +135,6 @@ __all__ = [
     "delete_question_from_open_exam",
     "export_exam_to_json_in_file",
     "export_open_exam_to_json",
-    "filter_questions",
     "format_question_label",
     "is_open_exam_dirty",
 

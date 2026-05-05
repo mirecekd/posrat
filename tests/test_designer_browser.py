@@ -26,7 +26,6 @@ from posrat.designer import (
     MOVE_UP,
     OPEN_EXAM_STORAGE_KEY,
     QUESTION_LIST_TEXT_PREVIEW,
-    SEARCH_QUERY_STORAGE_KEY,
     DEFAULT_MULTI_CHOICE_COUNT,
     DEFAULT_SINGLE_CHOICE_COUNT,
     add_blank_question_to_file,
@@ -37,7 +36,6 @@ from posrat.designer import (
     create_exam_file,
     delete_question_from_file,
     export_exam_to_json_in_file,
-    filter_questions,
     format_question_label,
     list_exam_files,
 
@@ -749,79 +747,6 @@ def test_move_question_in_file_rejects_unknown_question(tmp_path: Path) -> None:
 
     loaded = load_questions_from_file(db_path, exam.id)
     assert [q.id for q in loaded] == ["q-one", "q-two", "q-three"]
-
-
-def test_search_query_storage_key_constant() -> None:
-    """Storage key stays stable — it's part of the ``app.storage.user`` contract."""
-
-    assert SEARCH_QUERY_STORAGE_KEY == "designer_search_query"
-
-
-def test_filter_questions_empty_query_returns_all_as_shallow_copy() -> None:
-    """Empty query means "no filter" — result equals input and is a fresh list."""
-
-    questions = _build_multi_question_exam().questions
-
-    result = filter_questions(questions, "")
-
-    assert result == questions
-    assert result is not questions  # shallow copy, callers can mutate freely
-
-
-def test_filter_questions_whitespace_only_query_is_treated_as_empty() -> None:
-    """Pure whitespace should not hide any rows — users don't mean to filter."""
-
-    questions = _build_multi_question_exam().questions
-
-    result = filter_questions(questions, "   \t\n  ")
-
-    assert [q.id for q in result] == ["q-one", "q-two", "q-three"]
-
-
-def test_filter_questions_matches_text_case_insensitive() -> None:
-    """Case-insensitive substring match on ``Question.text``."""
-
-    questions = _build_multi_question_exam().questions
-
-    assert [q.id for q in filter_questions(questions, "second")] == ["q-two"]
-    assert [q.id for q in filter_questions(questions, "SECOND")] == ["q-two"]
-    # "question" appears in all three — case-insensitive substring keeps them all.
-    assert [q.id for q in filter_questions(questions, "Question")] == [
-        "q-one",
-        "q-two",
-        "q-three",
-    ]
-
-
-def test_filter_questions_matches_id_case_insensitive() -> None:
-    """Case-insensitive substring match on ``Question.id`` as well as text."""
-
-    questions = _build_multi_question_exam().questions
-
-    # "q-th" only matches ``q-three`` on id; it would not match on text.
-    assert [q.id for q in filter_questions(questions, "q-th")] == ["q-three"]
-    # Upper-case query still matches the lower-case id.
-    assert [q.id for q in filter_questions(questions, "Q-TWO")] == ["q-two"]
-
-
-def test_filter_questions_no_match_returns_empty() -> None:
-    """A query that matches neither id nor text of any row returns ``[]``."""
-
-    questions = _build_multi_question_exam().questions
-
-    assert filter_questions(questions, "nothing-here") == []
-
-
-def test_filter_questions_preserves_input_order() -> None:
-    """Filtering keeps the original list order — UI relies on this for Move up/down."""
-
-    questions = _build_multi_question_exam().questions
-
-    # "question" matches all three rows; they must come back in the original
-    # order (q-one, q-two, q-three) so the Designer Move up/down edge logic
-    # stays in sync with the on-disk sequence.
-    result = filter_questions(questions, "question")
-    assert [q.id for q in result] == ["q-one", "q-two", "q-three"]
 
 
 def test_update_question_text_in_file_rewrites_text(tmp_path: Path) -> None:

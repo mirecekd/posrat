@@ -1945,39 +1945,6 @@ MOVE_UP = "up"
 MOVE_DOWN = "down"
 
 
-#: Key used inside ``app.storage.user`` to persist the current Designer
-#: search query. The value is bound to a ``ui.input`` via
-#: :meth:`nicegui.elements.mixins.value_element.ValueElement.bind_value`, so
-#: the query survives Designer refreshes and tab reloads. Kept separate from
-#: :data:`OPEN_EXAM_STORAGE_KEY` because it applies across exams — the user
-#: can switch exams without retyping the filter.
-SEARCH_QUERY_STORAGE_KEY = "designer_search_query"
-
-
-def filter_questions(questions: list[Question], query: str) -> list[Question]:
-    """Return questions matching ``query`` on their id or text.
-
-    Matching is a plain case-insensitive substring check against both
-    ``question.id`` and ``question.text`` so the user can type either the
-    auto-generated id (``q-abc123``) or a text fragment to locate the right
-    row. An empty or whitespace-only ``query`` is treated as "no filter" and
-    returns a shallow copy of ``questions`` verbatim — callers can keep
-    calling this helper unconditionally instead of branching on empty input.
-    """
-
-    normalized = query.strip().lower()
-    if not normalized:
-        return list(questions)
-
-    return [
-        question
-        for question in questions
-        if normalized in question.id.lower()
-        or normalized in question.text.lower()
-    ]
-
-
-
 def reorder_questions_in_file(
     path: Path, exam_id: str, ordered_ids: list[str]
 ) -> None:
@@ -2078,112 +2045,6 @@ def _truncate_question_text(text: str, limit: int = QUESTION_LIST_TEXT_PREVIEW) 
     if len(flattened) <= limit:
         return flattened
     return flattened[: max(limit - 1, 0)] + "…"
-
-
-def _render_question_list(questions: list[Question], query: str = "") -> None:
-    """Render the per-question rows of the Question Browser.
-
-    Each row shows a short type badge (``single_choice`` / ``multi_choice`` /
-    ``hotspot``) followed by the question id, a truncated preview of its
-    text, Move up / Move down buttons (step 4.6.b) and a "Delete" button
-    that opens the delete confirmation dialog (step 4.5). The layout is
-    deliberately dense — one line per question — so the list scales to
-    exams with dozens of entries without scrolling. Full question editing
-    will land in the Properties panel (Phase 5).
-
-    ``query`` is the current Designer search string (step 4.7). Rows are
-    filtered client-side via :func:`filter_questions` while the edge-disable
-    logic for Move up / Move down stays based on each row's position in the
-    *full* unfiltered list — moving a filtered row up still swaps it with
-    its on-disk predecessor, not with the next visible row. Two distinct
-    empty-state placeholders separate "exam has no questions" from "filter
-    hides everything" so the user can always tell why the list is empty.
-    """
-
-    if not questions:
-        ui.label("No questions yet. Add one (step 4.4).").classes(
-            "text-caption text-grey q-mt-sm"
-        )
-        return
-
-    visible = filter_questions(questions, query)
-    if not visible:
-        ui.label(
-            "No question matches the search query."
-        ).classes("text-caption text-grey q-mt-sm")
-        return
-
-    last_index = len(questions) - 1
-
-    with ui.column().classes("q-mt-sm q-gutter-xs w-full"):
-        for question in visible:
-            index = questions.index(question)
-            with ui.row().classes("items-center q-gutter-sm no-wrap"):
-                ui.badge(question.type).props("color=primary")
-                # Display ``Q1``, ``Q2``, …, ``Qn`` instead of the raw
-                # UUID-ish ``question.id``. The id stays a stable key
-                # for JSON export / session answers; the label is a
-                # pure function of list position so reorders renumber
-                # for free. Tooltip still exposes the real id for
-                # debugging and for users who want to map a row back
-                # to the underlying DB record.
-                ui.label(format_question_label(index)).classes(
-                    "text-body2 text-weight-medium"
-                ).tooltip(question.id)
-                ui.label(_truncate_question_text(question.text)).classes(
-
-                    "text-body2 ellipsis"
-                ).style(
-                    f"max-width: {QUESTION_LIST_TEXT_WIDTH_PX}px;"
-                    f" width: {QUESTION_LIST_TEXT_WIDTH_PX}px;"
-                    " overflow: hidden; text-overflow: ellipsis;"
-                    " white-space: nowrap;"
-                )
-
-                up_button = ui.button(
-                    "Up",
-                    on_click=lambda _evt=None, q=question: _handle_move_question_click(q, MOVE_UP),
-                ).props("size=xs flat color=primary")
-                if index == 0:
-                    up_button.props("disable")
-                down_button = ui.button(
-                    "Down",
-                    on_click=lambda _evt=None, q=question: _handle_move_question_click(q, MOVE_DOWN),
-                ).props("size=xs flat color=primary")
-                ui.button(
-                    "Type",
-                    on_click=lambda _evt=None, q=question: _handle_change_question_type_click(q),
-                ).props("size=xs flat color=primary")
-                ui.button(
-                    "Edit",
-                    on_click=lambda _evt=None, q=question: _handle_edit_question_text_click(q),
-                ).props("size=xs flat color=primary")
-                if question.type in ("single_choice", "multi_choice"):
-                    ui.button(
-                        "Answers",
-                        on_click=lambda _evt=None, q=question: _handle_edit_choices_click(q),
-                    ).props("size=xs flat color=primary")
-                if question.type == "hotspot":
-                    ui.button(
-                        "Hotspot",
-                        on_click=lambda _evt=None, q=question: _handle_edit_hotspot_click(q),
-                    ).props("size=xs flat color=primary")
-                ui.button(
-                    "Explain",
-
-                    on_click=lambda _evt=None, q=question: _handle_edit_question_explanation_click(q),
-                ).props("size=xs flat color=primary")
-                ui.button(
-                    "Image",
-                    on_click=lambda _evt=None, q=question: _handle_edit_question_image_click(q),
-                ).props("size=xs flat color=primary")
-
-                ui.button(
-                    "Delete",
-                    on_click=lambda _evt=None, q=question: _handle_delete_question_click(q),
-                ).props("size=xs flat color=negative")
-
-
 
 
 
@@ -2502,10 +2363,10 @@ def _handle_edit_choices_click(question: Question) -> None:
 
     Central entry point invoked from the question-list row's "Answers"
     button. The button is only rendered for ``single_choice`` /
-    ``multi_choice`` rows (see :func:`_render_question_list`), but the
-    dispatcher still guards against a stale ``Question`` in memory (e.g.
-    the row was morphed to ``hotspot`` from another tab between render
-    and click) by surfacing a warning toast instead of raising.
+    ``multi_choice`` rows, but the dispatcher still guards against a
+    stale ``Question`` in memory (e.g. the row was morphed to
+    ``hotspot`` from another tab between render and click) by surfacing
+    a warning toast instead of raising.
 
     Each type has its own editor because the correctness invariant is
     different: single_choice requires *exactly* one correct, multi_choice
@@ -3621,61 +3482,6 @@ def _handle_move_question_click(question: Question, direction: str) -> None:
     arrow = "up" if direction == MOVE_UP else "down"
     ui.notify(f"Question {question.id} moved {arrow}.")
     _render_designer_body.refresh()
-
-
-def _render_open_exam_status() -> None:
-    """Render the "currently opened exam" banner if user has one stashed.
-
-
-    Besides the header metadata (name / description / path / question count)
-    the card also hosts the list of questions for the opened exam — fresh
-    from disk via :func:`load_questions_for_open_exam`, so edits made in
-    other tabs or via raw SQL are picked up on the next refresh.
-    """
-
-    summary = app.storage.user.get(OPEN_EXAM_STORAGE_KEY)
-    if not summary:
-        return
-
-    with ui.card().classes("q-mb-md w-full").props("bordered"):
-        ui.label("Open exam").classes("text-subtitle2")
-        ui.label(
-            f"{summary.get('name')} ({summary.get('question_count')} questions)"
-        ).classes("text-body1")
-        description = summary.get("description")
-        if description:
-            ui.label(str(description)).classes("text-caption")
-        ui.label(str(summary.get("path"))).classes("text-caption text-grey")
-
-        with ui.row().classes("items-center q-gutter-sm q-mt-sm"):
-            ui.button(
-                "Export JSON", on_click=_handle_export_exam_click
-            ).props("size=sm color=secondary")
-
-        ui.separator().classes("q-my-sm")
-        with ui.row().classes("items-center q-gutter-sm"):
-            ui.label("Questions").classes("text-subtitle2")
-            ui.button(
-                "Add question", on_click=_handle_add_question_click
-            ).props("size=sm color=primary")
-
-        # Client-side search filter (step 4.7). We bind the input to
-        # ``app.storage.user`` so the query survives Designer refreshes
-        # triggered by add/delete/move. ``on_change`` refreshes the body
-        # so the filtered list re-renders live; it's cheap because the
-        # questions are already in memory for the current render pass.
-        app.storage.user.setdefault(SEARCH_QUERY_STORAGE_KEY, "")
-        ui.input(
-            "Search",
-            placeholder="Filter by id or question text",
-            on_change=lambda _evt: _render_designer_body.refresh(),
-        ).bind_value(app.storage.user, SEARCH_QUERY_STORAGE_KEY).props(
-            "clearable dense"
-        ).classes("w-full q-mt-sm")
-
-        query = str(app.storage.user.get(SEARCH_QUERY_STORAGE_KEY, ""))
-        _render_question_list(load_questions_for_open_exam(), query)
-
 
 
 @ui.refreshable

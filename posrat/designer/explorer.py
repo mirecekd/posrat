@@ -23,14 +23,12 @@ from posrat.designer.browser import (
     MOVE_DOWN,
     MOVE_UP,
     OPEN_EXAM_STORAGE_KEY,
-    SEARCH_QUERY_STORAGE_KEY,
     _build_open_exam_summary,
     _handle_add_question_click,
     _handle_delete_question_click,
     _handle_move_question_click,
     _render_designer_body,
     _show_new_exam_dialog,
-    filter_questions,
     format_question_label,
     list_exam_files,
     load_questions_for_open_exam,
@@ -306,14 +304,13 @@ def _render_question_row(
 def render_explorer_panel() -> None:
     """Render the Exam Explorer panel (top-left of the 3-panel layout).
 
-    Renders toolbar, search input and scrollable question list. The
-    scroll area is capped at :data:`QUESTION_LIST_MAX_HEIGHT_PX` so
-    the Properties panel sitting below always stays visible.
+    Renders toolbar and scrollable question list. The scroll area is
+    capped at :data:`QUESTION_LIST_MAX_HEIGHT_PX` so the Properties
+    panel sitting below always stays visible.
 
     When no exam is open the panel shows a muted placeholder; when an
     exam is open but empty, it invites the user to click "Add
-    question". Both states match the legacy :func:`_render_question_list`
-    contract.
+    question".
     """
 
     summary = app.storage.user.get(OPEN_EXAM_STORAGE_KEY)
@@ -343,28 +340,8 @@ def render_explorer_panel() -> None:
     questions = load_questions_for_open_exam()
     selected_id = ensure_selection_valid(questions)
 
-    # Search input persists across refreshes via the existing
-    # SEARCH_QUERY_STORAGE_KEY so the Explorer, Properties and Editor
-    # all see the same filter.
-    app.storage.user.setdefault(SEARCH_QUERY_STORAGE_KEY, "")
-    ui.input(
-        placeholder="Search (id or text)…",
-        on_change=lambda _evt: _render_designer_body.refresh(),
-    ).bind_value(app.storage.user, SEARCH_QUERY_STORAGE_KEY).props(
-        "clearable dense outlined"
-    ).classes("w-full q-mt-xs")
-
-    query = str(app.storage.user.get(SEARCH_QUERY_STORAGE_KEY, ""))
-
     if not questions:
         ui.label("No questions yet. Add one with '+'.").classes(
-            "text-caption text-grey q-mt-sm"
-        )
-        return
-
-    visible = filter_questions(questions, query)
-    if not visible:
-        ui.label("No question matches the filter.").classes(
             "text-caption text-grey q-mt-sm"
         )
         return
@@ -372,11 +349,7 @@ def render_explorer_panel() -> None:
     with ui.scroll_area().classes("w-full").style(
         f"max-height: {QUESTION_LIST_MAX_HEIGHT_PX}px;"
     ):
-        for question in visible:
-            # Index into the *full* (unfiltered) list so the Qn label
-            # matches the on-disk order — filtering hides rows but
-            # keeps their numbering stable.
-            index = questions.index(question)
+        for index, question in enumerate(questions):
             _render_question_row(question, index, selected_id)
 
     # Scroll the selected row into view after each render so switching
