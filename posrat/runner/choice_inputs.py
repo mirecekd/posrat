@@ -354,18 +354,31 @@ def render_feedback_footer(question: Question, stash: dict) -> None:
     # default is ``True`` so existing users see the same UI as before.
     _user = current_user_or_none()
     _can_see_explanation = bool(_user and _user.can_see_explanation)
-    if question.explanation and _can_see_explanation:
-        ui.label("Explanation / reference").classes(
-            "text-subtitle2 q-mt-sm"
-        )
-        ui.markdown(question.explanation).classes("text-body2")
+    _show_reveal = bool(question.explanation and _can_see_explanation)
 
+    explanation_slot = ui.column().classes("w-full")
+
+    def _reveal(btn) -> None:
+        with explanation_slot:
+            ui.label("Explanation / reference").classes(
+                "text-subtitle2 q-mt-sm"
+            )
+            ui.markdown(question.explanation).classes("text-body2")
+        btn.disable()
 
     with ui.row().classes("items-center w-full q-mt-md justify-between"):
-        ui.button(
-            "Continue",
-            on_click=lambda _evt=None: on_continue_after_feedback(stash),
-        ).props("color=primary")
+        with ui.row().classes("items-center q-gutter-sm"):
+            ui.button(
+                "Continue",
+                on_click=lambda _evt=None: on_continue_after_feedback(stash),
+            ).props("color=primary")
+            if _show_reveal:
+                reveal_btn = ui.button("Reveal solution").props(
+                    "color=secondary outline"
+                )
+                reveal_btn.on(
+                    "click", lambda _e=None, b=reveal_btn: _reveal(b)
+                )
         _render_end_exam_button(stash)
 
 
