@@ -17,6 +17,7 @@ from typing import Optional
 from nicegui import app, ui
 
 from posrat.models import Question
+from posrat.runner.pause_dialog import open_pause_dialog
 from posrat.runner.sampler import shuffle_choices
 from posrat.runner.session_state import RUNNER_SESSION_STORAGE_KEY
 from posrat.runner.submit_flow import (
@@ -65,6 +66,23 @@ def _render_end_exam_button(stash: dict) -> None:
         "color=negative outline"
     )
 
+
+def _render_pause_button(stash: dict) -> None:
+    """Render the training-mode "Pause" button next to End exam.
+
+    No-ops outside training mode: pausing during a real exam would
+    let the candidate stop the clock at will, defeating the time
+    budget. The dialog itself lives in :mod:`posrat.runner.pause_dialog`
+    so the timer widget can re-open it after a page refresh.
+    """
+
+    if stash.get("mode") != "training":
+        return
+
+    ui.button(
+        "Pause",
+        on_click=lambda _evt=None: open_pause_dialog(stash),
+    ).props("color=primary outline")
 
 
 def get_choice_order(stash: dict, question: Question) -> list[str]:
@@ -336,7 +354,9 @@ def render_next_area(
                 question, stash, payload_holder
             ),
         ).props("color=primary")
-        _render_end_exam_button(stash)
+        with ui.row().classes("items-center q-gutter-sm"):
+            _render_pause_button(stash)
+            _render_end_exam_button(stash)
 
 
 def render_feedback_footer(question: Question, stash: dict) -> None:
@@ -379,7 +399,9 @@ def render_feedback_footer(question: Question, stash: dict) -> None:
                 reveal_btn.on(
                     "click", lambda _e=None, b=reveal_btn: _reveal(b)
                 )
-        _render_end_exam_button(stash)
+        with ui.row().classes("items-center q-gutter-sm"):
+            _render_pause_button(stash)
+            _render_end_exam_button(stash)
 
 
 

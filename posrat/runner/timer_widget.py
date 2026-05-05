@@ -18,14 +18,38 @@ module is pure presentation glue.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from nicegui import ui
 
 from posrat.runner.countdown import (
+    _parse_iso_utc,
     format_mm_ss,
     is_expired,
     remaining_seconds,
 )
+from posrat.runner.pause_dialog import open_pause_dialog
 from posrat.runner.submit_flow import force_finish_session
+
+
+def _effective_started_at(started_at: str, paused_seconds: int) -> str:
+    """Shift ``started_at`` forward by accumulated pause time.
+
+    The countdown helper caps remaining at zero internally, so a naïve
+    "add paused_seconds back at the call site" would over-report once
+    the wall-clock has already exceeded the original budget. Shifting
+    the effective start forward means the pure helper sees a later
+    start and computes the correct remainder without any caller-side
+    cap juggling.
+    """
+
+    if paused_seconds <= 0:
+        return started_at
+    parsed = _parse_iso_utc(started_at)
+    if parsed is None:
+        return started_at
+    shifted = parsed + timedelta(seconds=paused_seconds)
+    return shifted.isoformat().replace("+00:00", "Z")
 
 
 #: How often (seconds) the countdown widget re-renders. 1 keeps the
@@ -64,8 +88,17 @@ def render_countdown(stash: dict) -> None:
     label = ui.label("").classes("text-caption text-grey")
 
     def _tick() -> None:
+        # Training-mode pause: freeze the label and skip expiry checks.
+        # The ticker keeps firing (cheap no-op) so it picks up again
+        # automatically once the candidate hits Continue.
+        if stash.get("paused_at"):
+            return
+
+        effective = _effective_started_at(
+            started_at, int(stash.get("paused_seconds") or 0)
+        )
         secs = remaining_seconds(
-            started_at=started_at, time_limit_minutes=limit
+            started_at=effective, time_limit_minutes=limit
         )
         text = format_mm_ss(secs)
         if text is None:
@@ -84,7 +117,7 @@ def render_countdown(stash: dict) -> None:
             label.classes(replace="text-caption text-grey")
 
         if is_expired(
-            started_at=started_at, time_limit_minutes=limit
+            started_at=effective, time_limit_minutes=limit
         ) and not state["modal_shown"]:
             state["modal_shown"] = True
             _open_timeout_dialog(stash)
@@ -93,6 +126,13 @@ def render_countdown(stash: dict) -> None:
     # one full interval to see the initial MM:SS value.
     _tick()
     ui.timer(COUNTDOWN_INTERVAL_SECONDS, _tick)
+
+    # Auto-reopen the pause modal after a page refresh: the cookie
+    # carries ``paused_at`` across reloads, so we restore the modal
+    # so the candidate cannot accidentally keep playing after coming
+    # back to a paused tab.
+    if stash.get("paused_at"):
+        open_pause_dialog(stash)
 
 
 def _open_timeout_dialog(stash: dict) -> None:

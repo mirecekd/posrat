@@ -74,6 +74,12 @@ def build_runner_session_stash(
       a wrong-answer card is being displayed (training mode only); the
       view then locks the inputs and highlights correct/wrong rows.
       Cleared by the "Continue" handler.
+    * ``paused_at`` / ``paused_seconds`` — training-mode pause support.
+      ``paused_at`` carries the ISO-8601 UTC timestamp at which the
+      candidate hit Pause (``None`` while running); ``paused_seconds``
+      accumulates the total wall-clock time spent across all prior
+      pauses so the countdown can subtract it. See
+      :mod:`posrat.runner.pause_dialog`.
     """
 
     return {
@@ -89,6 +95,8 @@ def build_runner_session_stash(
         "choice_orders": {},
         "given_answers": {},
         "feedback_pending_for": None,
+        "paused_at": None,
+        "paused_seconds": 0,
     }
 
 
