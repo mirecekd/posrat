@@ -183,7 +183,7 @@ def render_question_view(stash: dict) -> None:
     _render_header(stash, index, len(question_ids))
 
     progress_value = index / max(len(question_ids), 1)
-    with ui.linear_progress(value=progress_value, show_value=False).props("instant-feedback"):
+    with ui.linear_progress(value=progress_value, size="20px", show_value=False).props("instant-feedback"):
         ui.label(f"{progress_value * 100:.1f} %").classes(
             "absolute-center text-sm text-white"
         )
