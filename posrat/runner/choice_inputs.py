@@ -345,15 +345,47 @@ def render_next_area(
     stash: dict,
     payload_holder: dict[str, object],
 ) -> None:
-    """Render the bottom "Submit" + far-right "End exam" button row."""
+    """Render the bottom "Submit" + far-right "End exam" button row.
+
+    In training mode the row also offers an inline **Reveal solution**
+    button next to Submit when the question carries an explanation and
+    the per-user ``can_see_explanation`` gate allows it. Exam mode
+    never shows the button — peeking at solutions during a timed run
+    would defeat the purpose of the assessment.
+    """
+
+    _user = current_user_or_none()
+    _can_see_explanation = bool(_user and _user.can_see_explanation)
+    _is_training = stash.get("mode") == "training"
+    _show_reveal = bool(
+        _is_training and question.explanation and _can_see_explanation
+    )
+
+    explanation_slot = ui.column().classes("w-full")
+
+    def _reveal(btn) -> None:
+        with explanation_slot:
+            ui.label("Explanation / reference").classes(
+                "text-subtitle2 q-mt-sm"
+            )
+            ui.markdown(question.explanation).classes("text-body2")
+        btn.disable()
 
     with ui.row().classes("items-center w-full q-mt-md justify-between"):
-        ui.button(
-            "Submit",
-            on_click=lambda _evt=None: on_submit_answer(
-                question, stash, payload_holder
-            ),
-        ).props("color=primary")
+        with ui.row().classes("items-center q-gutter-sm"):
+            ui.button(
+                "Submit",
+                on_click=lambda _evt=None: on_submit_answer(
+                    question, stash, payload_holder
+                ),
+            ).props("color=primary")
+            if _show_reveal:
+                reveal_btn = ui.button("Reveal solution").props(
+                    "color=secondary outline"
+                )
+                reveal_btn.on(
+                    "click", lambda _e=None, b=reveal_btn: _reveal(b)
+                )
         with ui.row().classes("items-center q-gutter-sm"):
             _render_pause_button(stash)
             _render_end_exam_button(stash)
