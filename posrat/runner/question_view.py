@@ -191,7 +191,9 @@ def render_question_view(stash: dict) -> None:
     ui.separator().classes("q-my-sm")
 
     # Question text as markdown (embeds ![](/media/assets/...) images).
-    ui.markdown(question.text).classes("text-body1")
+    # The posrat-question-text class preserves line breaks and indentation
+    # authored in the Designer (white-space: pre-line on rendered paragraphs).
+    ui.markdown(question.text, extras=["break-on-newline"]).classes("text-body1")
 
     # Review mode: locked inputs + green/red highlights. Triggered by
     # a wrong training-mode submit; cleared by prev/next nav or by the

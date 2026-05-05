@@ -132,7 +132,7 @@ def render_single_choice_input(
         if choice is None:  # pragma: no cover - defensive
             continue
         picked = current_pick == cid
-        row_classes = "items-center q-gutter-sm no-wrap w-full " + choice_row_classes(
+        row_classes = "items-center q-gutter-sm w-full " + choice_row_classes(
             is_correct=choice.is_correct,
             picked=picked,
             feedback_pending=feedback_pending,
@@ -171,7 +171,7 @@ def render_single_choice_input(
             ui.label(f"{letter_for(idx)}.").classes(
                 "text-weight-medium q-mr-xs"
             )
-            ui.markdown(choice.text).classes("col-grow")
+            ui.markdown(choice.text, extras=["break-on-newline"]).classes("col-grow")
 
 
 
@@ -225,7 +225,7 @@ def render_multi_choice_input(
         if choice is None:  # pragma: no cover - defensive
             continue
         picked = selections.get(cid, False)
-        row_classes = "items-center q-gutter-sm no-wrap w-full " + choice_row_classes(
+        row_classes = "items-center q-gutter-sm w-full " + choice_row_classes(
             is_correct=choice.is_correct,
             picked=picked,
             feedback_pending=feedback_pending,
@@ -248,7 +248,7 @@ def render_multi_choice_input(
             ui.label(f"{letter_for(idx)}.").classes(
                 "text-weight-medium q-mr-xs"
             )
-            ui.markdown(choice.text).classes("col-grow")
+            ui.markdown(choice.text, extras=["break-on-newline"]).classes("col-grow")
 
 
 def render_hotspot_input(
