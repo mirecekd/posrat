@@ -138,6 +138,7 @@ def _resolve_storage_secret() -> str:
 def _render_header(
     current_user_display: Optional[str] = None,
     *,
+    show_designer_link: bool = False,
     show_admin_link: bool = False,
 ) -> None:
     """Render the shared top navigation menu.
@@ -153,9 +154,8 @@ def _render_header(
     - A "Signed in: <display_name>" caption + "Log out" button when
       ``current_user_display`` is provided. The caption stays hidden
       on public routes (``/login``) where the caller passes ``None``.
-    - A Designer button visibility rule belongs to individual route
-      guards, not here — the shared header stays uniform across
-      sections.
+    - The Designer button is only rendered when ``show_designer_link``
+      is ``True`` — i.e. the current user has ``can_use_designer``.
 
     Phase 10.17 hides the Designer/Runner/Admin buttons, the dark-mode
     switch and the About button for unauthenticated visitors
@@ -171,9 +171,10 @@ def _render_header(
     with ui.header().classes("items-center"):
         ui.label(APP_TITLE).classes("text-h6 q-mr-md")
         if authenticated:
-            ui.button("Designer", on_click=_navigate_to_designer).props(
-                "flat color=white"
-            )
+            if show_designer_link:
+                ui.button("Designer", on_click=_navigate_to_designer).props(
+                    "flat color=white"
+                )
             ui.button("Runner", on_click=_navigate_to_runner).props(
                 "flat color=white"
             )
@@ -204,8 +205,13 @@ def _render_header(
 
 
 
-def _render_home() -> None:
-    """Render the placeholder content of the root page (``/``)."""
+def _render_home(*, show_designer: bool = True) -> None:
+    """Render the placeholder content of the root page (``/``).
+
+    Parameters:
+        show_designer: When ``False`` the "Open Designer" button is
+            hidden — the user lacks ``can_use_designer``.
+    """
 
     ui.label(APP_TITLE).classes("text-h4")
     ui.label(f"Personal Online Study, Review & Assessment Tool — v{__version__}")
@@ -214,7 +220,8 @@ def _render_home() -> None:
         "Runner runs a training or exam session."
     ).classes("text-caption q-mt-md")
     with ui.row().classes("q-mt-md"):
-        ui.button("Open Designer", on_click=_navigate_to_designer).props("color=primary")
+        if show_designer:
+            ui.button("Open Designer", on_click=_navigate_to_designer).props("color=primary")
         ui.button("Start Runner", on_click=_navigate_to_runner).props("color=secondary")
 
 
@@ -247,6 +254,7 @@ def _header_kwargs(user) -> dict:
 
     return {
         "current_user_display": user.effective_display_name,
+        "show_designer_link": bool(user.can_use_designer),
         "show_admin_link": bool(user.is_admin),
     }
 
@@ -259,7 +267,7 @@ def _home_page() -> None:
     if user is None:
         return
     _render_header(**_header_kwargs(user))
-    _render_home()
+    _render_home(show_designer=user.can_use_designer)
 
 
 @ui.page(DESIGNER_ROUTE)

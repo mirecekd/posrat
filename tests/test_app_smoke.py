@@ -189,6 +189,7 @@ def test_render_header_signature_accepts_optional_current_user() -> None:
     signature = inspect.signature(app_module._render_header)
     assert "current_user_display" in signature.parameters
     assert signature.parameters["current_user_display"].default is None
+    assert "show_designer_link" in signature.parameters
     assert "show_admin_link" in signature.parameters
 
 
