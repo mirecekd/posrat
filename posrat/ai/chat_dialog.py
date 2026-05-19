@@ -34,7 +34,8 @@ from posrat.ai.chat_state import (
     load_history,
     save_history,
 )
-from posrat.ai.config import DEFAULT_ENRICH_PROMPT, AISettings
+from posrat.ai.config import AISettings
+
 from posrat.ai.context import build_question_context
 from posrat.ai.mcp_client import build_mcp_clients, parse_mcp_config
 from posrat.models import Question
@@ -203,9 +204,11 @@ def render_chat_dialog(
         async def _on_auto_enrich() -> None:
             """Fire the canned enrichment prompt + auto-commit the reply.
 
-            Feeds :data:`DEFAULT_ENRICH_PROMPT` through the same
-            streaming pipeline as a manual send, then — on success —
-            prepends the fresh assistant reply into the question's
+            Feeds :attr:`AISettings.effective_enrich_prompt` (admin-
+            customised template, falling back to
+            :data:`DEFAULT_ENRICH_PROMPT`) through the same streaming
+            pipeline as a manual send, then — on success — prepends
+            the fresh assistant reply into the question's
             Explanation/Reference field via
             :func:`_insert_last_reply_into_explanation` (which closes
             the dialog and refreshes the Designer body).
@@ -217,7 +220,10 @@ def render_chat_dialog(
                 # captures ``question`` as ``Optional`` so narrow
                 # locally for the type checker and for safety.
                 return
-            succeeded = await _run_chat_turn(DEFAULT_ENRICH_PROMPT)
+            succeeded = await _run_chat_turn(
+                settings.effective_enrich_prompt
+            )
+
             if not succeeded:
                 return
             _insert_last_reply_into_explanation(

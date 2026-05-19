@@ -11,6 +11,9 @@ server:
 
 - ``python -m posrat create-admin <username>`` — interactive prompt
   for a new password, writes the hashed value into the system DB.
+- ``python -m posrat enrich <exam.sqlite> [...]`` — bulk Auto-enrich
+  every question in the given exam DB using the admin-configured
+  prompt; writes a timestamped backup before any changes.
 
 Any other positional token is rejected with a short usage message so
 ``python -m posrat --help`` still behaves like a newbie would expect.
@@ -31,9 +34,11 @@ def _print_usage() -> None:
     print(
         "Usage:\n"
         "  python -m posrat                          launch the NiceGUI server (default)\n"
-        "  python -m posrat create-admin <username>  interactively (re)set an admin password\n",
+        "  python -m posrat create-admin <username>  interactively (re)set an admin password\n"
+        "  python -m posrat enrich <exam.sqlite>     bulk Auto-enrich an exam .sqlite\n",
         file=sys.stderr,
     )
+
 
 
 def _cmd_create_admin(argv: Sequence[str]) -> int:
@@ -90,6 +95,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     command, *rest = argv
     if command == "create-admin":
         return _cmd_create_admin(rest)
+    if command == "enrich":
+        # Lazy import — pulls in boto3 / Strands / mcp through the
+        # enrich runner. Keeping it out of the module-level imports
+        # means ``python -m posrat create-admin`` (or default
+        # server start) doesn't pay the AI dependency cost when the
+        # operator isn't using bulk enrichment.
+        from posrat.ai.enrich_cli import run_enrich_command
+
+        return run_enrich_command(rest)
     if command in {"-h", "--help", "help"}:
         _print_usage()
         return 0
@@ -97,6 +111,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"unknown command: {command!r}", file=sys.stderr)
     _print_usage()
     return 2
+
 
 
 if __name__ == "__main__":

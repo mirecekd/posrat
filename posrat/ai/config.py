@@ -25,10 +25,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
-#: Default Bedrock model id — Anthropic Claude Sonnet 4.5.
-#: The admin can override in the UI; this default keeps fresh
-#: installs functional without any manual config.
-DEFAULT_MODEL_ID: str = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+#: Default Bedrock model id — Anthropic Claude Sonnet 4.6 via global
+#: cross-region inference profile. The admin can override in the UI;
+#: this default keeps fresh installs functional without any manual config.
+DEFAULT_MODEL_ID: str = "global.anthropic.claude-sonnet-4-6"
 
 #: Default AWS region for the Bedrock runtime endpoint.
 DEFAULT_REGION: str = "eu-west-1"
@@ -45,15 +45,92 @@ DEFAULT_SYSTEM_PROMPT: str = (
 
 #: Prompt sent by the Designer-only "Auto-enrich" chat button. The
 #: resulting assistant reply is automatically prepended into the
-#: question's Explanation/Reference field once the stream finishes —
-#: keep it focused on "verify correct answer + cite AWS docs" because
-#: candidates will read the output verbatim during review mode.
-DEFAULT_ENRICH_PROMPT: str = (
-    "Check the question carefully, identify the correct answer(s), "
-    "and justify it using AWS documentation via the MCP server. "
-    "Cite the specific AWS docs URLs you used. Be concise — this "
-    "text will be stored as the question's Explanation/Reference."
-)
+#: question's Explanation/Reference field once the stream finishes,
+#: so the model is asked to produce a strict markdown template that
+#: candidates will read verbatim during review mode. The structure
+#: (Correct Answer / Justification / Why the other answers are wrong)
+#: matches the format the Designer agreed on for study materials.
+#:
+#: Formatting rules (kept inside the prompt so the model echoes them
+#: literally):
+#:
+#: * Output must be valid GitHub-flavoured markdown with a blank line
+#:   after every heading and before every block (list, blockquote,
+#:   horizontal rule).
+#: * All references must be clickable - either inline ``[text](url)``
+#:   or a bullet ``- Reference: <full https URL>``. Never write "see
+#:   the AWS docs" without a URL.
+#: * Plain ASCII hyphen ``-`` only. No en-dash, no em-dash, no other
+#:   Unicode dashes.
+#: * No emoji, no Unicode icons, no decorative symbols. Plain text +
+#:   markdown formatting only.
+#: * Always answer in English regardless of the language the question
+#:   is written in - the text is stored as study material that will
+#:   be reviewed by candidates preparing for English-language AWS
+#:   certification exams.
+#: * Be concise. The reply lands verbatim in the question's
+#:   Explanation/Reference field; nobody wants 2000-word essays
+#:   during review.
+DEFAULT_ENRICH_PROMPT: str = """\
+Check the question carefully, identify the correct answer(s), and \
+produce a study-grade explanation in the strict markdown template \
+below. Use the aws-knowledge MCP tool to verify facts and cite the \
+specific AWS documentation URLs you used.
+
+Output requirements (follow exactly):
+
+- Start the reply directly with the `## Correct Answer:` heading. \
+Do not write any preamble, greeting, summary, restatement of the \
+question, or meta-commentary like "Here is the answer" before that \
+heading. The first character of your reply must be `#`.
+- Always answer in English, regardless of the question's language.
+- Be concise. The reply is stored verbatim as the question's \
+Explanation/Reference and will be read during review.
+- Use plain GitHub-flavoured markdown. No HTML.
+- Leave a blank line after every heading and before every block \
+(list, blockquote, horizontal rule, code block).
+- All references must be clickable: either inline `[anchor](https://...)` \
+or a bullet `- Reference: https://...` with the full URL. Never write \
+"see the AWS documentation" without a URL.
+- Use only the plain ASCII hyphen `-`. Do not use en-dash, em-dash, \
+or any other Unicode dash characters.
+- Do not use emoji, Unicode icons, checkmarks, arrows or any other \
+decorative symbols. Plain text + markdown formatting only.
+- List every incorrect option and explain briefly why it is wrong.
+
+
+Template (replicate the structure exactly, replacing the placeholders):
+
+## Correct Answer: <Letter>
+
+**<One-line restatement of the correct option text in bold>**
+
+---
+
+### Justification
+
+**Part 1 - <Topic of the first justification block>**
+
+<Body paragraphs explaining the first part of the answer. Use a \
+blockquote when quoting AWS documentation verbatim.>
+
+- Reference: https://docs.aws.amazon.com/...
+
+**Part 2 - <Topic of the second justification block>**
+
+<Body paragraphs explaining the second part of the answer.>
+
+- Reference: https://docs.aws.amazon.com/...
+
+---
+
+### Why the other answers are wrong
+
+- **<Letter>** - <Brief reason this option is incorrect.>
+- **<Letter>** - <Brief reason this option is incorrect.>
+- **<Letter>** - <Brief reason this option is incorrect.>
+"""
+
 
 
 
@@ -76,6 +153,7 @@ class AISettings:
     region: str
     system_prompt: Optional[str]
     mcp_config_json: Optional[str]
+    enrich_prompt: Optional[str]
     updated_at: Optional[str]
 
     @classmethod
@@ -92,8 +170,23 @@ class AISettings:
             region=DEFAULT_REGION,
             system_prompt=None,
             mcp_config_json=None,
+            enrich_prompt=None,
             updated_at=None,
         )
+
+    @property
+    def effective_enrich_prompt(self) -> str:
+        """Return the enrich prompt to feed the Auto-enrich button.
+
+        Falls back to :data:`DEFAULT_ENRICH_PROMPT` when the admin has
+        not customised the prompt or has cleared the field. Keeps the
+        chat dialog free of "is it None?" branching.
+        """
+
+        if self.enrich_prompt and self.enrich_prompt.strip():
+            return self.enrich_prompt
+        return DEFAULT_ENRICH_PROMPT
+
 
 
 def _utc_now_iso() -> str:
@@ -108,14 +201,23 @@ def _utc_now_iso() -> str:
 
 
 def _row_to_settings(row: sqlite3.Row) -> AISettings:
-    """Hydrate a ``ai_settings`` row into :class:`AISettings`."""
+    """Hydrate a ``ai_settings`` row into :class:`AISettings`.
 
+    ``row`` may originate from a pre-v6 schema where the
+    ``enrich_prompt`` column did not exist yet; ``sqlite3.Row.keys()``
+    is consulted before reading so legacy DBs load cleanly with the
+    field defaulted to ``None``.
+    """
+
+    keys = set(row.keys())
+    enrich = row["enrich_prompt"] if "enrich_prompt" in keys else None
     return AISettings(
         enabled=bool(row["enabled"]),
         model_id=str(row["model_id"]),
         region=str(row["region"]),
         system_prompt=row["system_prompt"],
         mcp_config_json=row["mcp_config_json"],
+        enrich_prompt=enrich,
         updated_at=row["updated_at"],
     )
 
@@ -131,7 +233,7 @@ def load_ai_settings(db: sqlite3.Connection) -> AISettings:
 
     row = db.execute(
         "SELECT enabled, model_id, region, system_prompt,"
-        " mcp_config_json, updated_at"
+        " mcp_config_json, enrich_prompt, updated_at"
         " FROM ai_settings WHERE id = 1"
     ).fetchone()
     if row is None:
@@ -147,6 +249,7 @@ def save_ai_settings(
     region: str,
     system_prompt: Optional[str] = None,
     mcp_config_json: Optional[str] = None,
+    enrich_prompt: Optional[str] = None,
 ) -> AISettings:
     """Upsert the singleton AI settings row.
 
@@ -154,6 +257,12 @@ def save_ai_settings(
     ``None`` so the admin form "clear this field" UX round-trips
     through the DB cleanly. Returns the freshly hydrated settings so
     callers can update their caches / refresh the UI immediately.
+
+    The ``enrich_prompt`` parameter overrides the hardcoded
+    :data:`DEFAULT_ENRICH_PROMPT` used by the Designer Auto-enrich
+    button. Passing ``None`` (or whitespace) keeps the admin's
+    "use the default" choice persisted as a NULL row, which the
+    :meth:`AISettings.effective_enrich_prompt` helper then resolves.
 
     Raises:
         ValueError: when ``model_id`` or ``region`` are blank after
@@ -179,18 +288,24 @@ def save_ai_settings(
         stripped = mcp_config_json.strip()
         mcp_clean = stripped or None
 
+    enrich_clean: Optional[str] = None
+    if enrich_prompt is not None:
+        stripped = enrich_prompt.strip()
+        enrich_clean = stripped or None
+
     updated_at = _utc_now_iso()
     with db:
         db.execute(
             "INSERT INTO ai_settings (id, enabled, model_id, region,"
-            " system_prompt, mcp_config_json, updated_at)"
-            " VALUES (1, ?, ?, ?, ?, ?, ?)"
+            " system_prompt, mcp_config_json, enrich_prompt, updated_at)"
+            " VALUES (1, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(id) DO UPDATE SET"
             "   enabled = excluded.enabled,"
             "   model_id = excluded.model_id,"
             "   region = excluded.region,"
             "   system_prompt = excluded.system_prompt,"
             "   mcp_config_json = excluded.mcp_config_json,"
+            "   enrich_prompt = excluded.enrich_prompt,"
             "   updated_at = excluded.updated_at",
             (
                 1 if enabled else 0,
@@ -198,6 +313,7 @@ def save_ai_settings(
                 region,
                 prompt_clean,
                 mcp_clean,
+                enrich_clean,
                 updated_at,
             ),
         )
@@ -208,8 +324,10 @@ def save_ai_settings(
         region=region,
         system_prompt=prompt_clean,
         mcp_config_json=mcp_clean,
+        enrich_prompt=enrich_clean,
         updated_at=updated_at,
     )
+
 
 
 __all__ = [

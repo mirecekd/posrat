@@ -165,6 +165,23 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE users ADD COLUMN can_see_explanation INTEGER NOT NULL
         DEFAULT 1 CHECK(can_see_explanation IN (0, 1));
     """,
+    # Phase 14 step 2 — admin-editable Auto-enrich prompt.
+    #
+    # The Designer "Auto-enrich" button used to ship a hardcoded prompt
+    # baked into ``posrat.ai.config.DEFAULT_ENRICH_PROMPT``. To let
+    # operators iterate on the template (output structure, formatting
+    # rules, language) without a redeploy, the prompt is now persisted
+    # alongside the rest of the AI settings.
+    #
+    # The column is added as nullable TEXT — when ``NULL`` (or after the
+    # admin clears the textarea) the application falls back to
+    # :data:`posrat.ai.config.DEFAULT_ENRICH_PROMPT`. That keeps fresh
+    # installs functional without forcing the admin to copy-paste the
+    # default into the form on first boot.
+    6: """
+    ALTER TABLE ai_settings ADD COLUMN enrich_prompt TEXT;
+    """,
 }
+
 
 

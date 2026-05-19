@@ -27,6 +27,7 @@ from typing import Optional
 from nicegui import ui
 
 from posrat.ai.config import (
+    DEFAULT_ENRICH_PROMPT,
     DEFAULT_MODEL_ID,
     DEFAULT_REGION,
     DEFAULT_SYSTEM_PROMPT,
@@ -34,6 +35,7 @@ from posrat.ai.config import (
     load_ai_settings,
     save_ai_settings,
 )
+
 from posrat.designer.browser import resolve_data_dir
 from posrat.system.system_db import open_system_db, resolve_system_db_path
 
@@ -141,8 +143,48 @@ def _render_form(settings: AISettings) -> None:
         "input-style=font-family:monospace"
     )
 
+    # Auto-enrich prompt textarea. The Designer "Auto-enrich" button
+    # sends this prompt verbatim to the LLM whenever the operator
+    # one-clicks an explanation; tweaking it in the admin UI lets
+    # operators iterate on the markdown template (heading structure,
+    # formatting rules, language) without redeploying.
+    #
+    # The textarea is pre-filled with the built-in default whenever
+    # the admin has not customised it yet. Using ``placeholder``
+    # would only ghost the text into the background where it cannot
+    # be selected, copied or tweaked — which defeats the whole point
+    # of exposing the prompt for editing. On save, the helper below
+    # treats "value identical to the default" as "still using the
+    # default" and persists ``NULL`` so future default changes
+    # propagate automatically.
+    enrich_initial = settings.enrich_prompt or DEFAULT_ENRICH_PROMPT
+    enrich = ui.textarea(
+        label="Auto-enrich prompt",
+        value=enrich_initial,
+    ).classes("w-full").props(
+        "outlined type=textarea rows=20 "
+        "input-style=font-family:monospace"
+    )
+    ui.label(
+        "Sent verbatim by the Designer Auto-enrich button. Reset "
+        "to the built-in template by clearing the field and saving."
+    ).classes("text-caption text-grey q-mt-xs")
+
+    def _on_reset_enrich() -> None:
+        """Restore the textarea to the built-in default template."""
+
+        enrich.value = DEFAULT_ENRICH_PROMPT
+
+    ui.button(
+        "Reset to default template",
+        icon="restart_alt",
+        on_click=_on_reset_enrich,
+    ).props("flat dense").classes("q-mt-xs")
+
+
 
     if settings.updated_at:
+
         ui.label(f"Last saved: {settings.updated_at}").classes(
             "text-caption text-grey q-mt-xs"
         )
@@ -153,6 +195,14 @@ def _render_form(settings: AISettings) -> None:
             ui.notify(f"MCP JSON: {error}", type="negative")
             return
 
+        # Treat "value identical to the built-in default" as
+        # "still using the default" — persisted as NULL so future
+        # default-template changes propagate to this admin without
+        # them having to manually re-paste.
+        enrich_value = (enrich.value or "").strip() or None
+        if enrich_value == DEFAULT_ENRICH_PROMPT.strip():
+            enrich_value = None
+
         db = _open_system_db()
         try:
             save_ai_settings(
@@ -162,7 +212,10 @@ def _render_form(settings: AISettings) -> None:
                 region=region.value or "",
                 system_prompt=prompt.value or None,
                 mcp_config_json=mcp.value or None,
+                enrich_prompt=enrich_value,
             )
+
+
         except (ValueError, sqlite3.DatabaseError) as exc:
             ui.notify(f"Cannot save: {exc}", type="negative")
             return

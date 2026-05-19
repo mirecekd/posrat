@@ -25,8 +25,10 @@ def _make(system_prompt=None) -> AISettings:
         region="eu-west-1",
         system_prompt=system_prompt,
         mcp_config_json=None,
+        enrich_prompt=None,
         updated_at=None,
     )
+
 
 
 def test_compose_uses_default_when_admin_prompt_missing():

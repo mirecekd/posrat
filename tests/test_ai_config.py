@@ -5,12 +5,14 @@ from __future__ import annotations
 import pytest
 
 from posrat.ai.config import (
+    DEFAULT_ENRICH_PROMPT,
     DEFAULT_MODEL_ID,
     DEFAULT_REGION,
     AISettings,
     load_ai_settings,
     save_ai_settings,
 )
+
 from posrat.system.system_db import (
     CURRENT_SYSTEM_SCHEMA_VERSION,
     open_system_db,
@@ -142,3 +144,65 @@ def test_save_trims_required_field_whitespace(system_db):
     )
     assert saved.model_id == "m1"
     assert saved.region == "eu-west-1"
+
+
+def test_migration_v6_adds_enrich_prompt_column(system_db):
+    # Phase 14 step 2 promoted the Auto-enrich prompt to a configurable
+    # admin field. The system DB must therefore expose an
+    # ``enrich_prompt`` column on the ``ai_settings`` table.
+    assert CURRENT_SYSTEM_SCHEMA_VERSION >= 6
+    columns = {
+        row[1]
+        for row in system_db.execute(
+            "PRAGMA table_info(ai_settings)"
+        ).fetchall()
+    }
+    assert "enrich_prompt" in columns
+
+
+def test_save_then_load_round_trips_enrich_prompt(system_db):
+    saved = save_ai_settings(
+        system_db,
+        enabled=True,
+        model_id="m",
+        region="r",
+        enrich_prompt="## Custom template",
+    )
+    loaded = load_ai_settings(system_db)
+    assert saved == loaded
+    assert loaded.enrich_prompt == "## Custom template"
+
+
+def test_save_normalises_blank_enrich_prompt_to_none(system_db):
+    saved = save_ai_settings(
+        system_db,
+        enabled=True,
+        model_id="m",
+        region="r",
+        enrich_prompt="   \n  ",
+    )
+    assert saved.enrich_prompt is None
+    assert load_ai_settings(system_db).enrich_prompt is None
+
+
+def test_effective_enrich_prompt_falls_back_to_default():
+    # When the admin has not set anything, the helper must yield the
+    # built-in default — that's what keeps fresh installs functional
+    # without forcing the operator to copy-paste the template.
+    settings = AISettings.default()
+    assert settings.enrich_prompt is None
+    assert settings.effective_enrich_prompt == DEFAULT_ENRICH_PROMPT
+
+
+def test_effective_enrich_prompt_uses_custom_when_set():
+    settings = AISettings(
+        enabled=True,
+        model_id="m",
+        region="r",
+        system_prompt=None,
+        mcp_config_json=None,
+        enrich_prompt="## Override",
+        updated_at=None,
+    )
+    assert settings.effective_enrich_prompt == "## Override"
+
