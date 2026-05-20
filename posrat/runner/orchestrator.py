@@ -49,27 +49,27 @@ from posrat.storage import (
 
 @dataclass(frozen=True)
 class SelectAll:
-    """Take N random questions from the whole exam pool.
+    """Take N random questions from the exam pool.
 
     ``count = None`` means "take every question" (full shuffle). When
-    ``count`` exceeds the exam pool size the sampler clamps silently —
-    see :func:`posrat.runner.sampler.sample_question_ids`.
+    ``count`` exceeds the available pool size the sampler clamps
+    silently — see :func:`posrat.runner.sampler.sample_question_ids`.
+
+    The optional 1-based inclusive ``range_start`` / ``range_end``
+    pair narrows the pool to a specific slice **before** sampling, so
+    the candidate can ask for "65 random questions from questions
+    300..500" instead of from the whole exam. Both must be either
+    ``None`` (no range modifier) or both set; the orchestrator
+    validates the bounds at session-start time and raises
+    :class:`ValueError` for malformed ranges (start < 1, end < start,
+    end > pool size). Order in the resulting sample is shuffled by
+    the sampler regardless of the slice — POSRAT never serves
+    questions in their author-specified order.
     """
 
     count: Optional[int] = None
-
-
-@dataclass(frozen=True)
-class SelectRange:
-    """Take the inclusive 1-based slice ``start..end`` of the exam pool.
-
-    Mirrors the VCE "Take question range from X to Y" dialog option
-    shown on the screenshot used when planning this feature. Order is
-    preserved — the sampler does not shuffle a hand-picked range.
-    """
-
-    start: int
-    end: int
+    range_start: Optional[int] = None
+    range_end: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,8 @@ class SelectIncorrect:
     min_wrong_count: int = 1
 
 
-QuestionSelection = Union[SelectAll, SelectRange, SelectIncorrect]
+QuestionSelection = Union[SelectAll, SelectIncorrect]
+
 
 
 
@@ -163,12 +164,29 @@ def _resolve_selection(
     """Dispatch to the concrete sampler based on ``selection`` kind."""
 
     if isinstance(selection, SelectAll):
-        return sample_question_ids(questions, selection.count, rng=rng)
-    if isinstance(selection, SelectRange):
-        return select_questions_by_range(
-            questions, start=selection.start, end=selection.end
-        )
+        pool = list(questions)
+        # Optional range modifier: narrow the pool to a 1-based
+        # inclusive slice *before* sampling. ``select_questions_by_range``
+        # validates the bounds (start>=1, end>=start, end<=len(pool))
+        # and raises ValueError so a malformed range surfaces as a
+        # session-start failure rather than silently returning an empty
+        # list. Both fields must be set together; the ``mode_selection``
+        # resolver enforces that contract upstream.
+        if selection.range_start is not None or selection.range_end is not None:
+            if selection.range_start is None or selection.range_end is None:
+                raise ValueError(
+                    "range_start and range_end must be set together"
+                )
+            range_ids = select_questions_by_range(
+                pool,
+                start=selection.range_start,
+                end=selection.range_end,
+            )
+            range_pool = [q for q in pool if q.id in set(range_ids)]
+            return sample_question_ids(range_pool, selection.count, rng=rng)
+        return sample_question_ids(pool, selection.count, rng=rng)
     if isinstance(selection, SelectIncorrect):
+
         ids = list_incorrect_question_ids(
             db,
             exam_id=exam_id,
@@ -481,7 +499,6 @@ __all__ = [
     "QuestionSelection",
     "SelectAll",
     "SelectIncorrect",
-    "SelectRange",
     "SessionScore",
     "StartedSession",
     "compute_session_score",
@@ -489,4 +506,5 @@ __all__ = [
     "start_runner_session",
     "submit_runner_answer",
 ]
+
 

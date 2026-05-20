@@ -5,6 +5,16 @@ per-option input → :data:`QuestionSelection` conversion can be unit
 tested without booting NiceGUI. The heavy side-effect (``ui.notify``)
 is injected as a callable so tests can capture messages; production
 callers pass ``ui.notify`` directly.
+
+The dialog has two question-selection radios (Take N / Take incorrect)
+plus an optional **range modifier** checkbox that only applies to the
+Take N mode. When the checkbox is on, the resolver narrows the exam
+pool to a 1-based inclusive ``[start, end]`` slice *before* the
+random sample, so the candidate can ask for "65 random questions
+from questions 300..500". The range modifier is silently ignored
+when the active mode is Take incorrect — the user explicitly opted
+out of combining incorrect-only filtering with author-order ranges
+during planning (2026-05-20).
 """
 
 from __future__ import annotations
@@ -15,7 +25,6 @@ from posrat.runner.orchestrator import (
     QuestionSelection,
     SelectAll,
     SelectIncorrect,
-    SelectRange,
 )
 
 
@@ -24,7 +33,6 @@ from posrat.runner.orchestrator import (
 #: string literal. Keeping them together prevents a refactor that
 #: renames one side from silently breaking the dialog.
 OPT_ALL = "all"
-OPT_RANGE = "range"
 OPT_INCORRECT = "incorrect"
 
 
@@ -35,11 +43,12 @@ def resolve_selection_from_dialog(
     *,
     mode: str,
     count_value,
-    range_start_value,
-    range_end_value,
     wrong_value,
     pool_size: int,
     notify: NotifyFn,
+    range_enabled: bool = False,
+    range_start_value=None,
+    range_end_value=None,
 ) -> Optional[QuestionSelection]:
     """Convert dialog widget values into a :data:`QuestionSelection`.
 
@@ -49,8 +58,14 @@ def resolve_selection_from_dialog(
     without closing the dialog so the user can correct the typo.
 
     ``pool_size`` is the total number of questions in the exam —
-    needed to bound-check the "Take range" option without re-reading
-    the DB.
+    needed to bound-check the range modifier without re-reading the DB.
+
+    The ``range_*`` arguments encode the optional "Limit to question
+    range from X to Y" modifier (only applied when ``mode == OPT_ALL``
+    and ``range_enabled is True``). When the active mode is something
+    else, the range modifier is silently dropped — the dialog UI also
+    disables the checkbox in that case so the user cannot accidentally
+    request an unsupported combination.
     """
 
     if mode == OPT_ALL:
@@ -62,22 +77,28 @@ def resolve_selection_from_dialog(
         if count <= 0:
             notify("Question count must be positive.")
             return None
-        return SelectAll(count=count)
 
-    if mode == OPT_RANGE:
-        try:
-            start = int(range_start_value or 0)
-            end = int(range_end_value or 0)
-        except (TypeError, ValueError):
-            notify("Invalid range.")
-            return None
-        if start < 1 or end < 1 or end > pool_size:
-            notify(f"Range must lie within 1..{pool_size}.")
-            return None
-        if end < start:
-            notify("Range end must be >= range start.")
-            return None
-        return SelectRange(start=start, end=end)
+        range_start: Optional[int] = None
+        range_end: Optional[int] = None
+        if range_enabled:
+            try:
+                range_start = int(range_start_value or 0)
+                range_end = int(range_end_value or 0)
+            except (TypeError, ValueError):
+                notify("Invalid range.")
+                return None
+            if range_start < 1 or range_end < 1 or range_end > pool_size:
+                notify(f"Range must lie within 1..{pool_size}.")
+                return None
+            if range_end < range_start:
+                notify("Range end must be >= range start.")
+                return None
+
+        return SelectAll(
+            count=count,
+            range_start=range_start,
+            range_end=range_end,
+        )
 
     if mode == OPT_INCORRECT:
         try:
@@ -88,6 +109,9 @@ def resolve_selection_from_dialog(
         if threshold < 1:
             notify("Wrong-count threshold must be >= 1.")
             return None
+        # Range modifier is silently ignored for incorrect-only mode —
+        # the dialog disables the checkbox in that case so the user
+        # cannot fall into this branch with range_enabled=True via UI.
         return SelectIncorrect(min_wrong_count=threshold)
 
     notify("Pick one question-selection mode.")
@@ -98,6 +122,5 @@ __all__ = [
     "NotifyFn",
     "OPT_ALL",
     "OPT_INCORRECT",
-    "OPT_RANGE",
     "resolve_selection_from_dialog",
 ]

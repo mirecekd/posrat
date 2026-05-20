@@ -18,13 +18,13 @@ from posrat.models import Answer, Choice, Exam, Question, Session
 from posrat.runner.orchestrator import (
     SelectAll,
     SelectIncorrect,
-    SelectRange,
     SessionScore,
     compute_session_score,
     list_incorrect_question_ids,
     start_runner_session,
     submit_runner_answer,
 )
+
 from posrat.storage import (
     create_exam,
     finish_session,
@@ -466,8 +466,14 @@ def test_record_answer_replaces_on_resubmit(tmp_path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_start_runner_session_select_range_preserves_order(tmp_path) -> None:
-    """SelectRange(3, 5) on a 10-question pool yields q-2 q-3 q-4 in order."""
+def test_start_runner_session_select_all_with_range_modifier(tmp_path) -> None:
+    """``SelectAll(count=N, range_start=X, range_end=Y)`` samples from the slice.
+
+    On a 10-question pool, range 3..5 covers exactly q-2/q-3/q-4. Asking
+    for ``count=3`` therefore returns those three ids in *some* shuffled
+    order — POSRAT never serves questions in author sequence even when
+    the candidate hand-picked a slice.
+    """
 
     path = _seed_exam(tmp_path, question_count=10)
     started = start_runner_session(
@@ -475,12 +481,88 @@ def test_start_runner_session_select_range_preserves_order(tmp_path) -> None:
         exam_id="e1",
         mode="training",
         candidate_name="dev",
-        selection=SelectRange(start=3, end=5),
+        selection=SelectAll(count=3, range_start=3, range_end=5),
         session_id="s-range",
         started_at="2026-04-23T10:00:00Z",
+        rng=random.Random(0),
     )
-    assert started.question_ids == ["q-2", "q-3", "q-4"]
+    assert sorted(started.question_ids) == ["q-2", "q-3", "q-4"]
     assert started.session.question_count == 3
+
+
+def test_start_runner_session_select_all_with_range_clamps_count(tmp_path) -> None:
+    """Asking for more than the slice contains clamps silently to slice size."""
+
+    path = _seed_exam(tmp_path, question_count=10)
+    started = start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="dev",
+        selection=SelectAll(count=100, range_start=4, range_end=6),
+        session_id="s-clamp",
+        started_at="2026-04-23T10:00:00Z",
+        rng=random.Random(0),
+    )
+    assert sorted(started.question_ids) == ["q-3", "q-4", "q-5"]
+    assert started.session.question_count == 3
+
+
+def test_start_runner_session_select_all_with_range_subset_sample(tmp_path) -> None:
+    """``count`` smaller than the slice picks a random subset of the slice."""
+
+    path = _seed_exam(tmp_path, question_count=10)
+    started = start_runner_session(
+        path,
+        exam_id="e1",
+        mode="training",
+        candidate_name="dev",
+        selection=SelectAll(count=2, range_start=3, range_end=7),
+        session_id="s-subset",
+        started_at="2026-04-23T10:00:00Z",
+        rng=random.Random(42),
+    )
+    slice_ids = {"q-2", "q-3", "q-4", "q-5", "q-6"}
+    assert len(started.question_ids) == 2
+    assert set(started.question_ids).issubset(slice_ids)
+    assert started.session.question_count == 2
+
+
+def test_start_runner_session_rejects_range_out_of_bounds(tmp_path) -> None:
+    """``end > pool_size`` surfaces as ValueError, no session row written."""
+
+    path = _seed_exam(tmp_path, question_count=5)
+    with pytest.raises(ValueError):
+        start_runner_session(
+            path,
+            exam_id="e1",
+            mode="training",
+            candidate_name="dev",
+            selection=SelectAll(count=3, range_start=1, range_end=10),
+            session_id="s-bad-range",
+            started_at="2026-04-23T10:00:00Z",
+        )
+
+
+def test_start_runner_session_rejects_partial_range(tmp_path) -> None:
+    """``range_start`` without ``range_end`` (or vice-versa) is an error.
+
+    The mode-selection resolver always sets both fields together, but
+    direct programmatic callers might not — guard surfaces the bug.
+    """
+
+    path = _seed_exam(tmp_path, question_count=5)
+    with pytest.raises(ValueError):
+        start_runner_session(
+            path,
+            exam_id="e1",
+            mode="training",
+            candidate_name="dev",
+            selection=SelectAll(count=3, range_start=2, range_end=None),
+            session_id="s-partial",
+            started_at="2026-04-23T10:00:00Z",
+        )
+
 
 
 def test_start_runner_session_select_all_with_count(tmp_path) -> None:
