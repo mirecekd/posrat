@@ -1,6 +1,6 @@
 # POSRAT
 
-Personal Online Study, Review & Assessment Tool — a Python (NiceGUI)
+Personal Online Study, Review & Assessment Tool - a Python (NiceGUI)
 tool for authoring and practising certification exams (primarily AWS,
 but the format is generic).
 
@@ -12,9 +12,9 @@ but the format is generic).
 
 ## Features
 
-- **Designer** — exam editor (single/multi-choice, hotspot, images, explanations).
-- **Runner** — run exams in training or exam mode.
-- **AI chat assistant** — optional Bedrock-backed study tutor via
+- **Designer** - exam editor (single/multi-choice, hotspot, images, explanations).
+- **Runner** - run exams in training or exam mode.
+- **AI chat assistant** - optional Bedrock-backed study tutor via
   [Strands Agents](https://strandsagents.com/) with MCP server
   integration (defaults to
   [aws-knowledge-mcp](https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server/)).
@@ -26,7 +26,7 @@ but the format is generic).
 Each exam is stored as a single SQLite file; a portable `.posrat` bundle
 (zip with `exam.json` + `assets/`) is used for import/export.
 
-### AI chat — AWS credentials
+### AI chat - AWS credentials
 
 The assistant uses the **default boto3 credential chain**
 (`AWS_PROFILE`, environment variables, IMDS, SSO cache). No keys are
@@ -73,14 +73,14 @@ To enable the AI chat in the container, pass AWS credentials via any
 standard boto3 mechanism:
 
 ```bash
-# Option A — inline access keys
+# Option A - inline access keys
 docker run -d -p 8080:8080 -v posrat-data:/data \
     -e AWS_ACCESS_KEY_ID=AKIA... \
     -e AWS_SECRET_ACCESS_KEY=... \
     -e AWS_DEFAULT_REGION=eu-west-1 \
     posrat
 
-# Option B — mount the host's ~/.aws for profile/SSO reuse
+# Option B - mount the host's ~/.aws for profile/SSO reuse
 docker run -d -p 8080:8080 -v posrat-data:/data \
     -v ~/.aws:/home/posrat/.aws:ro \
     -e AWS_PROFILE=my-profile \
@@ -88,7 +88,7 @@ docker run -d -p 8080:8080 -v posrat-data:/data \
 ```
 
 Then enable the chat in `/admin` → *AI chat* tab (see
-[AI chat — AWS credentials](#ai-chat--aws-credentials) above).
+[AI chat - AWS credentials](#ai-chat--aws-credentials) above).
 
 
 Data is persisted in the `/data` volume. The first admin account can be
@@ -123,5 +123,5 @@ If this tool is useful to you, you can support development:
 
 ## License
 
-[MIT](LICENSE) — © 2026 Miroslav Dvorak.
+[MIT](LICENSE) - © 2026 Miroslav Dvorak.
 
