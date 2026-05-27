@@ -41,6 +41,7 @@ def start_session(
     time_limit_minutes: Optional[int] = None,
     passing_score: Optional[int] = None,
     target_score: Optional[int] = None,
+    username: Optional[str] = None,
 ) -> Session:
     """Create and persist a new session for ``exam_id``.
 
@@ -74,14 +75,16 @@ def start_session(
         time_limit_minutes=time_limit_minutes,
         passing_score=passing_score,
         target_score=target_score,
+        username=username,
     )
 
     with db:
         db.execute(
             "INSERT INTO sessions (id, exam_id, mode, started_at,"
             " finished_at, candidate_name, question_count,"
-            " time_limit_minutes, passing_score, target_score)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " time_limit_minutes, passing_score, target_score,"
+            " username)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session.id,
                 session.exam_id,
@@ -93,6 +96,7 @@ def start_session(
                 session.time_limit_minutes,
                 session.passing_score,
                 session.target_score,
+                session.username,
             ),
         )
     return session
@@ -150,7 +154,7 @@ def _load_answers(
 _SESSION_SELECT_COLUMNS = (
     "id, exam_id, mode, started_at, finished_at,"
     " candidate_name, question_count, time_limit_minutes,"
-    " passing_score, target_score"
+    " passing_score, target_score, username"
 )
 
 
@@ -170,6 +174,7 @@ def _row_to_session(
         time_limit_minutes=row["time_limit_minutes"],
         passing_score=row["passing_score"],
         target_score=row["target_score"],
+        username=row["username"],
         answers=_load_answers(db, row["id"]),
     )
 

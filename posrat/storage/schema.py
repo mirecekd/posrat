@@ -148,6 +148,19 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE sessions ADD COLUMN passing_score INTEGER;
     ALTER TABLE sessions ADD COLUMN target_score INTEGER;
     """,
+    # Step 14.x — Per-user Runner history filtering:
+    #   * username — stable POSRAT account identifier of the signed-in
+    #     user that started this session. Distinct from the free-text
+    #     ``candidate_name`` (which the user can type/edit at will);
+    #     this column is pinned from the auth layer and is used by the
+    #     Runner history panel to show non-admin users only their own
+    #     sessions, while admins see everyone's. NULL-able so legacy
+    #     sessions (pre-migration) keep loading; non-admin viewers
+    #     simply do not see them.
+    12: """
+    ALTER TABLE sessions ADD COLUMN username TEXT;
+    CREATE INDEX idx_sessions_username ON sessions (username);
+    """,
 }
 
 

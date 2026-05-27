@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "posrat"
-version = "2026.05.20+2"
+version = "2026.05.27+1"
 
 
 

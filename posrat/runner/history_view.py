@@ -21,6 +21,7 @@ from nicegui import app, ui
 from posrat.runner.history import SessionResultSummary, list_session_results
 from posrat.runner.session_detail_view import RUNNER_DETAIL_STORAGE_KEY
 from posrat.storage import delete_session, open_db
+from posrat.system.current_user import current_user_or_none
 
 
 #: Display title for the right-hand history panel.
@@ -28,10 +29,26 @@ RUNNER_HISTORY_HEADING = "Results history"
 
 
 def render_history_panel(data_dir: Path) -> None:
-    """Render the session history column on the Runner landing page."""
+    """Render the session history column on the Runner landing page.
 
-    ui.label(RUNNER_HISTORY_HEADING).classes("text-h5")
-    results = list_session_results(data_dir)
+    Honours the per-user filter introduced in Phase 14:
+
+    * Admins (``User.is_admin``) see every session in the data dir
+      and the heading is annotated as ``(all users)`` so it is
+      visually obvious they are looking at multi-user data.
+    * Everyone else sees only their own sessions (filtered by the
+      ``sessions.username`` snapshot pinned at session start).
+    * Headless contexts without an auth session (rare — the page is
+      behind ``require_auth``) fall back to the unfiltered list so
+      tests keep passing.
+    """
+
+    viewer = current_user_or_none()
+    heading = RUNNER_HISTORY_HEADING
+    if viewer is not None and viewer.is_admin:
+        heading = f"{RUNNER_HISTORY_HEADING} (all users)"
+    ui.label(heading).classes("text-h5")
+    results = list_session_results(data_dir, viewer=viewer)
 
     if not results:
         ui.label(
@@ -88,6 +105,16 @@ def _render_result_card(result: SessionResultSummary) -> None:
             _render_state_chip(result)
 
         _render_delete_button(result)
+
+        # Admin-only: show the underlying account that owns the
+        # session so a multi-user data dir is legible at a glance.
+        # Non-admins only ever see their own rows so this would be
+        # redundant noise for them.
+        _viewer = current_user_or_none()
+        if _viewer is not None and _viewer.is_admin and result.username:
+            ui.label(f"User: {result.username}").classes(
+                "text-caption text-grey"
+            )
 
         # Candidate + mode + started timestamp in a caption row. Wrap
         # in a clickable div so we keep the "click anywhere" drill-down

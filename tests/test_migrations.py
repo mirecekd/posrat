@@ -469,11 +469,12 @@ def test_sessions_table_has_expected_columns() -> None:
             "time_limit_minutes",
             "passing_score",
             "target_score",
+            "username",
         }
         assert columns["id"][5] == 1  # pk flag
         for not_null in ("exam_id", "mode", "started_at"):
             assert columns[not_null][3] == 1, f"{not_null} must be NOT NULL"
-        # finished_at + all five v11 snapshot columns are nullable.
+        # finished_at + the v11/v12 snapshot columns are nullable.
         for nullable in (
             "finished_at",
             "candidate_name",
@@ -481,6 +482,7 @@ def test_sessions_table_has_expected_columns() -> None:
             "time_limit_minutes",
             "passing_score",
             "target_score",
+            "username",
         ):
             assert columns[nullable][3] == 0, f"{nullable} must be nullable"
     finally:

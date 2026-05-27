@@ -57,6 +57,19 @@ def render_session_detail(stash: dict) -> None:
         _render_back_button()
         return
 
+    # Per-user ACL (Phase 14): a non-admin viewer must not see another
+    # user's session even if they hand-craft the storage stash. Admin
+    # users bypass the check; legacy sessions (NULL username) are
+    # treated as private — only admins may view them.
+    _viewer = current_user_or_none()
+    if _viewer is not None and not _viewer.is_admin:
+        if detail.session.username != _viewer.username:
+            ui.label(
+                "You don't have access to this session."
+            ).classes("text-negative")
+            _render_back_button()
+            return
+
     _render_summary_card(detail)
 
     ui.separator().classes("q-my-md")

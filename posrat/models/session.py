@@ -94,6 +94,12 @@ class Session(BaseModel):
         target_score: Snapshot of the raw-points "100 %" mark paired
             with ``passing_score``. ``None`` when the exam had no
             pass/fail criterion.
+        username: Stable POSRAT account identifier of the user that
+            started this session (Phase 14 multi-user filtering).
+            Pinned from the auth layer at session start; ``None`` for
+            legacy sessions persisted before migration v12. Distinct
+            from ``candidate_name``, which is the free-text label
+            shown in the UI and editable by the user.
     """
 
     id: str = Field(..., min_length=1)
@@ -107,4 +113,5 @@ class Session(BaseModel):
     time_limit_minutes: Optional[int] = Field(default=None, ge=1)
     passing_score: Optional[int] = Field(default=None, ge=0)
     target_score: Optional[int] = Field(default=None, ge=1)
+    username: Optional[str] = Field(default=None, min_length=1)
 

@@ -34,6 +34,7 @@ from posrat.runner.session_state import (
     build_runner_session_stash,
 )
 from posrat.runner.view_helpers import current_runner_username, utc_now_iso
+from posrat.system.current_user import current_user_or_none
 
 
 #: Fallback count when the exam itself does not specify
@@ -177,6 +178,13 @@ def open_mode_dialog(summary: RunnerExamSummary) -> None:
 
             mode = "training" if training_toggle.value else "exam"
 
+            # Pin the signed-in account to the session row so the
+            # Runner history panel can filter per-user (Phase 14).
+            # ``candidate_name`` stays a free-text label; ``username``
+            # is the stable POSRAT identifier we use for ACL.
+            _user = current_user_or_none()
+            session_username = _user.username if _user else None
+
             try:
                 started = start_runner_session(
                     summary.path,
@@ -187,6 +195,7 @@ def open_mode_dialog(summary: RunnerExamSummary) -> None:
                     time_limit_minutes=time_limit,
                     passing_score=summary.passing_score,
                     target_score=summary.target_score,
+                    username=session_username,
                     started_at=utc_now_iso(),
                 )
             except (

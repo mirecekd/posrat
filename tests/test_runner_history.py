@@ -16,7 +16,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from posrat.models import Choice, Exam, Question
+from posrat.models import Choice, Exam, Question, User
 from posrat.runner.history import (
     SessionResultSummary,
     list_session_results,
@@ -162,3 +162,110 @@ def test_list_session_results_flattens_and_sorts_newest_first(tmp_path) -> None:
     # 1 correct / 1 total = 100 % → raw_score 1000 → passed True.
     assert old_summary.score.correct_count == 1
     assert old_summary.score.passed is True
+
+
+# --------------------------------------------------------------------------- #
+# Per-user filtering (Phase 14: admin sees all, others only their own)        #
+# --------------------------------------------------------------------------- #
+
+
+def _user(username: str, *, is_admin: bool = False) -> User:
+    """Build a minimal :class:`User` for viewer-filter tests."""
+
+    return User(
+        username=username,
+        display_name=username,
+        auth_source="internal",
+        is_admin=is_admin,
+        created_at="2026-01-01T00:00:00Z",
+    )
+
+
+def _seed_two_user_sessions(tmp_path: Path) -> Path:
+    """Seed an exam DB with two finished sessions owned by different users."""
+
+    path = tmp_path / "shared.sqlite"
+    _seed_exam(path, exam_id="e", name="Shared Exam")
+    db = open_db(path)
+    try:
+        # Alice's session.
+        start_session(
+            db,
+            exam_id="e",
+            mode="training",
+            session_id="s-alice",
+            started_at="2026-04-20T10:00:00Z",
+            candidate_name="Alice",
+            question_count=1,
+            passing_score=700,
+            target_score=1000,
+            username="alice",
+        )
+        finish_session(db, "s-alice", finished_at="2026-04-20T10:30:00Z")
+        # Bob's session — newer so it sorts first.
+        start_session(
+            db,
+            exam_id="e",
+            mode="exam",
+            session_id="s-bob",
+            started_at="2026-04-22T11:00:00Z",
+            candidate_name="Bob",
+            question_count=1,
+            passing_score=700,
+            target_score=1000,
+            username="bob",
+        )
+        # Legacy session (pre-migration v12) — username is NULL.
+        start_session(
+            db,
+            exam_id="e",
+            mode="exam",
+            session_id="s-legacy",
+            started_at="2026-04-19T09:00:00Z",
+            candidate_name="Old",
+            question_count=1,
+            passing_score=700,
+            target_score=1000,
+            username=None,
+        )
+    finally:
+        db.close()
+    return path
+
+
+def test_list_session_results_no_viewer_returns_everything(tmp_path) -> None:
+    """``viewer=None`` keeps backwards-compatible behaviour: no filter."""
+
+    _seed_two_user_sessions(tmp_path)
+    results = list_session_results(tmp_path)
+    assert {r.session_id for r in results} == {"s-alice", "s-bob", "s-legacy"}
+
+
+def test_list_session_results_admin_sees_every_session(tmp_path) -> None:
+    """Admin viewer bypasses the per-user filter."""
+
+    _seed_two_user_sessions(tmp_path)
+    admin = _user("root", is_admin=True)
+    results = list_session_results(tmp_path, viewer=admin)
+    assert {r.session_id for r in results} == {"s-alice", "s-bob", "s-legacy"}
+
+
+def test_list_session_results_non_admin_sees_only_own(tmp_path) -> None:
+    """Non-admin viewer sees only sessions where ``username`` matches."""
+
+    _seed_two_user_sessions(tmp_path)
+    alice = _user("alice")
+    results = list_session_results(tmp_path, viewer=alice)
+    assert [r.session_id for r in results] == ["s-alice"]
+    assert results[0].username == "alice"
+
+
+def test_list_session_results_non_admin_hides_legacy_null_username(
+    tmp_path,
+) -> None:
+    """Legacy sessions (NULL username) are invisible to non-admins."""
+
+    _seed_two_user_sessions(tmp_path)
+    other = _user("charlie")
+    results = list_session_results(tmp_path, viewer=other)
+    assert results == []

@@ -228,6 +228,7 @@ def start_runner_session(
     time_limit_minutes: Optional[int] = None,
     passing_score: Optional[int] = None,
     target_score: Optional[int] = None,
+    username: Optional[str] = None,
     session_id: Optional[str] = None,
     started_at: Optional[str] = None,
     rng: Optional[random.Random] = None,
@@ -320,6 +321,7 @@ def start_runner_session(
             time_limit_minutes=time_limit_minutes,
             passing_score=passing_score,
             target_score=target_score,
+            username=username,
         )
     finally:
         db.close()

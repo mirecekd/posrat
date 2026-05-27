@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from posrat.designer.browser import list_exam_files
+from posrat.models import User
 from posrat.runner.orchestrator import SessionScore, compute_session_score
 from posrat.storage import get_exam, list_sessions, open_db
 
@@ -37,6 +38,7 @@ class SessionResultSummary:
     exam_name: str
     session_id: str
     candidate_name: Optional[str]
+    username: Optional[str]
     mode: str
     started_at: str
     finished_at: Optional[str]
@@ -49,7 +51,9 @@ class SessionResultSummary:
         return bool(self.finished_at)
 
 
-def _summarise_file_sessions(path: Path) -> list[SessionResultSummary]:
+def _summarise_file_sessions(
+    path: Path, *, viewer: Optional[User] = None
+) -> list[SessionResultSummary]:
     """Return all session summaries stored in a single exam ``.sqlite``.
 
     Opens the file, pulls every session + exam header + computed score,
@@ -82,6 +86,14 @@ def _summarise_file_sessions(path: Path) -> list[SessionResultSummary]:
         sessions = list_sessions(db, exam_id)
         summaries: list[SessionResultSummary] = []
         for session in sessions:
+            # Per-user filter (Phase 14): admins see everything,
+            # everyone else sees only their own sessions. Legacy
+            # rows with NULL ``username`` (pre-migration v12) are
+            # invisible to non-admins by design — admins still see
+            # them so historical data is not lost.
+            if viewer is not None and not viewer.is_admin:
+                if session.username != viewer.username:
+                    continue
             score = compute_session_score(session)
             summaries.append(
                 SessionResultSummary(
@@ -90,6 +102,7 @@ def _summarise_file_sessions(path: Path) -> list[SessionResultSummary]:
                     exam_name=exam_name,
                     session_id=session.id,
                     candidate_name=session.candidate_name,
+                    username=session.username,
                     mode=session.mode,
                     started_at=session.started_at,
                     finished_at=session.finished_at,
@@ -101,7 +114,9 @@ def _summarise_file_sessions(path: Path) -> list[SessionResultSummary]:
         db.close()
 
 
-def list_session_results(data_dir: Path) -> list[SessionResultSummary]:
+def list_session_results(
+    data_dir: Path, *, viewer: Optional[User] = None
+) -> list[SessionResultSummary]:
     """Return all sessions from every exam under ``data_dir``.
 
     Walks :func:`list_exam_files` and concatenates the per-file
@@ -112,11 +127,23 @@ def list_session_results(data_dir: Path) -> list[SessionResultSummary]:
     Files that fail to parse (invalid DB, no exam row, …) are
     silently skipped so one corrupted backup does not hide all valid
     history.
+
+    The ``viewer`` argument enables per-user filtering (Phase 14):
+
+    * ``None`` — no filter, every session is included. Used by
+      headless tests and CLI tooling that have no auth context.
+    * ``viewer.is_admin == True`` — admin override, every session is
+      included regardless of ``username``.
+    * Otherwise — only sessions where ``session.username`` equals
+      ``viewer.username``. Legacy rows with ``NULL`` username are
+      excluded (admins still see them).
     """
 
     all_summaries: list[SessionResultSummary] = []
     for path in list_exam_files(data_dir):
-        all_summaries.extend(_summarise_file_sessions(path))
+        all_summaries.extend(
+            _summarise_file_sessions(path, viewer=viewer)
+        )
 
     all_summaries.sort(key=lambda s: s.started_at, reverse=True)
     return all_summaries
